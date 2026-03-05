@@ -8,7 +8,6 @@ MEETING_APPS = [
     "whatsapp.exe"
 ]
 
-
 def meeting_process_running():
     for p in psutil.process_iter(['name']):
         name = (p.info['name'] or "").lower()

@@ -1,17 +1,20 @@
 import pygetwindow as gw
 
 KEYWORDS = [
-    "zoom",
-    "meet",
-    "teams",
+    "zoom meeting",
+    "google meet",
+    "microsoft teams",
     "whatsapp",
+    "discord",
 ]
 
 def meeting_window_open():
 
     for title in gw.getAllTitles():
-        t = title.lower()
-        if not t.strip():
+
+        t = title.lower().strip()
+
+        if not t:
             continue
 
         for k in KEYWORDS:
