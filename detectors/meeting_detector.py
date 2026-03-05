@@ -3,18 +3,24 @@ import pygetwindow as gw
 import winreg
 
 
+MIC_REG_PATH = r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged"
+
+
 def chrome_running():
 
     for p in psutil.process_iter(['name']):
-        if (p.info['name'] or "").lower() == "chrome.exe":
+        name = (p.info['name'] or "").lower()
+
+        if name == "chrome.exe":
             return True
 
     return False
 
+
 def meet_tab_open():
 
     for title in gw.getAllTitles():
-        print(title)
+
         t = title.lower().strip()
 
         if not t:
@@ -32,20 +38,20 @@ def meet_tab_open():
 def mic_in_use():
 
     try:
-
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged"
-        )
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, MIC_REG_PATH)
 
         i = 0
 
         while True:
 
-            subkey_name = winreg.EnumKey(key, i)
-            subkey = winreg.OpenKey(key, subkey_name)
+            try:
+                subkey_name = winreg.EnumKey(key, i)
+            except OSError:
+                break
 
             try:
+                subkey = winreg.OpenKey(key, subkey_name)
+
                 last = winreg.QueryValueEx(subkey, "LastUsedTimeStart")[0]
                 stop = winreg.QueryValueEx(subkey, "LastUsedTimeStop")[0]
 
@@ -65,4 +71,10 @@ def mic_in_use():
 
 def meeting_active():
 
-    return chrome_running() and meet_tab_open() and mic_in_use()
+    chrome = chrome_running()
+    meet = meet_tab_open()
+    mic = mic_in_use()
+
+    print("chrome:", chrome, "meet:", meet, "mic:", mic)
+
+    return chrome and meet and mic
