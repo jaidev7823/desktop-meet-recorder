@@ -1,2 +1,6 @@
 obs-websocket-py
 python-dotenv
+psutil
+pygetwindow
+sounddevice
+numpy
