@@ -1,37 +1,34 @@
 import time
 
+from detectors.browser_detector import meeting_window_open
+from detectors.mic_detector import mic_used_by_meeting_app
 from obs.controller import start_recording, stop_recording
-from detectors.mic_detector import mic_active
-from detectors.process_detector import meeting_process_running
-from detectors.browser_detector import meeting_tab_open
 
 recording = False
 
 
-def on_call():
+def meeting_detected():
 
-    if not mic_active():
-        return False
+    mic = mic_used_by_meeting_app()
+    meeting = meeting_window_open()
 
-    if meeting_process_running():
-        return True
+    print("mic:", mic, "meeting_window:", meeting)
 
-    if meeting_tab_open():
-        return True
-
-    return False
+    return mic and meeting
 
 
 while True:
 
-    call = on_call()
+    call = meeting_detected()
 
     if call and not recording:
         start_recording()
         recording = True
+        print("OBS recording started")
 
     if not call and recording:
         stop_recording()
         recording = False
+        print("OBS recording stopped")
 
-    time.sleep(5)
+    time.sleep(3)

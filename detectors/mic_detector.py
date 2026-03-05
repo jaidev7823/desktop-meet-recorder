@@ -1,12 +1,27 @@
-import sounddevice as sd
-import numpy as np
+from pycaw.pycaw import AudioUtilities
+import psutil
+
+MEETING_APPS = [
+    "chrome.exe",
+    "zoom.exe",
+    "teams.exe",
+    "whatsapp.exe",
+    "discord.exe"
+]
 
 
-def mic_active():
+def mic_used_by_meeting_app():
 
-    data = sd.rec(8000, samplerate=8000, channels=1)
-    sd.wait()
+    sessions = AudioUtilities.GetAllSessions()
 
-    level = abs(data).mean()
+    for session in sessions:
 
-    return level > 0.01
+        if not session.Process:
+            continue
+
+        name = session.Process.name().lower()
+
+        if name in MEETING_APPS:
+            return True
+
+    return False
