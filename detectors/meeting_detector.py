@@ -1,30 +1,46 @@
+import win32gui
+import win32process
 import psutil
-import pygetwindow as gw
 import winreg
+import pygetwindow as gw
 
-# Base path for Packaged apps (like WhatsApp Desktop)
 MIC_REG_PATH_PACKAGED = r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
-# Path for Non-Packaged apps (like Chrome)
 MIC_REG_PATH_NON_PACKAGED = r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged"
+
+def get_window_process_name(hwnd):
+    try:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        process = psutil.Process(pid)
+        return process.name().lower()
+    except:
+        return ""
+
+def count_whatsapp_windows():
+    """Count visible windows owned by the WhatsApp process."""
+    whatsapp_windows = []
+
+    def callback(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        title = win32gui.GetWindowText(hwnd)
+        if not title:
+            return
+        proc_name = get_window_process_name(hwnd)
+        if "whatsapp" in proc_name:
+            whatsapp_windows.append(title)
+
+    win32gui.EnumWindows(callback, None)
+    return len(whatsapp_windows)
 
 def chrome_running():
     for p in psutil.process_iter(['name']):
-        name = (p.info['name'] or "").lower()
-        if name == "chrome.exe":
-            return True
-    return False
-
-def whatsapp_app_running():
-    for p in psutil.process_iter(['name']):
-        name = (p.info['name'] or "").lower()
-        if name == "whatsapp.exe":
+        if (p.info['name'] or "").lower() == "chrome.exe":
             return True
     return False
 
 def meet_tab_open():
     for title in gw.getAllTitles():
         t = title.lower().strip()
-        if not t: continue
         if "google chrome" in t and "meet" in t:
             return True
     return False
@@ -32,14 +48,11 @@ def meet_tab_open():
 def whatsapp_web_open():
     for title in gw.getAllTitles():
         t = title.lower().strip()
-        if not t: continue
-        # Checks if WhatsApp is in the title alongside common browsers
-        if "whatsapp" in t and any(browser in t for browser in ["chrome", "edge", "firefox", "brave"]):
+        if "whatsapp" in t and any(b in t for b in ["chrome", "edge", "firefox", "brave"]):
             return True
     return False
 
 def check_registry_mic(registry_path):
-    """Helper function to check a specific registry path for mic activity."""
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path)
         i = 0
@@ -48,43 +61,35 @@ def check_registry_mic(registry_path):
                 subkey_name = winreg.EnumKey(key, i)
             except OSError:
                 break
-            
             try:
                 subkey = winreg.OpenKey(key, subkey_name)
                 last = winreg.QueryValueEx(subkey, "LastUsedTimeStart")[0]
                 stop = winreg.QueryValueEx(subkey, "LastUsedTimeStop")[0]
-                
-                # If the start time is greater than the stop time, the mic is currently active
                 if last > stop:
                     return True
             except OSError:
                 pass
-            
             i += 1
     except OSError:
         pass
-    
     return False
 
 def mic_in_use():
-    # Check both packaged apps (WhatsApp Desktop) and non-packaged apps (Chrome)
     return check_registry_mic(MIC_REG_PATH_PACKAGED) or check_registry_mic(MIC_REG_PATH_NON_PACKAGED)
 
 def check_active_calls():
-    # Evaluate base states
     mic = mic_in_use()
-    
-    # Meet Logic
-    meet_active = chrome_running() and meet_tab_open() and mic
-    
-    # WhatsApp Logic (Triggered if either the Desktop App OR the Web version is running while mic is active)
-    whatsapp_active = (whatsapp_app_running() or whatsapp_web_open()) and mic
+    whatsapp_window_count = count_whatsapp_windows()
 
-    print(f"Mic Active: {mic}")
-    print(f"Google Meet Call: {meet_active}")
-    print(f"WhatsApp Call: {whatsapp_active}")
+    meet_active = chrome_running() and meet_tab_open() and mic
+
+    # PRIMARY: 2 windows = call is open (mic is secondary confirmation)
+    # If windows drop to 1, call is DEFINITELY over regardless of mic state
+    if whatsapp_window_count >= 2:
+        whatsapp_active = mic  # Both must be true to START
+    else:
+        whatsapp_active = False  # 1 window = always stop, no mic check needed
+
+    print(f"Mic: {mic} | WhatsApp Windows: {whatsapp_window_count} | Meet: {meet_active} | WhatsApp: {whatsapp_active}")
 
     return meet_active, whatsapp_active
-
-if __name__ == "__main__":
-    check_active_calls()
