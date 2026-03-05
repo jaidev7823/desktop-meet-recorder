@@ -1,0 +1,16 @@
+{
+  "name": "desktop-meet-recorder-obs",
+  "version": "1.0.0",
+  "description": "I want something who can connect to obs websocket and constantly track when user get in call like",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^40.7.0"
+  }
+}
