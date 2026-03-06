@@ -1,33 +1,37 @@
 import time
+import argparse
+import os
 
-# Updated import to use the new function
+parser = argparse.ArgumentParser()
+parser.add_argument('--ffmpeg', default='ffmpeg', help='Path to ffmpeg executable')
+parser.add_argument('--mic', default='Microphone (Audio Array AM-C1 Device)')
+parser.add_argument('--stereo', default='Stereo Mix (Realtek(R) Audio)')
+args = parser.parse_args()
+
+# Pass paths to controller via environment variables
+os.environ["FFMPEG_PATH"] = args.ffmpeg
+os.environ["MIC_DEVICE"] = args.mic
+os.environ["STEREO_DEVICE"] = args.stereo
+
 from detectors.meeting_detector import check_active_calls
 from obs.controller import start_recording, stop_recording
 
 recording = False
-
 print("Monitoring started. Waiting for active Google Meet or WhatsApp calls...")
 
 while True:
-    # Unpack the tuple returned by the updated detector
     meet_active, whatsapp_active = check_active_calls()
-    
-    # A call is happening if either Meet OR WhatsApp is active
     call = meet_active or whatsapp_active
 
-    # Start recording if a call just started
     if call and not recording:
         start_recording()
         recording = True
-        
-        # Optional: Print exactly which call triggered the recording
         trigger = "Google Meet" if meet_active else "WhatsApp"
-        print(f"OBS recording started (Triggered by: {trigger})")
+        print(f"Recording started (Triggered by: {trigger})")
 
-    # Stop recording if all calls have ended
     if not call and recording:
         stop_recording()
         recording = False
-        print("OBS recording stopped")
+        print("Recording stopped")
 
     time.sleep(3)
