@@ -3,4 +3,5 @@ node_modules
 .env
 resources/bin/ffmpeg.exe
 resrources
+resource/bin/
 dist
