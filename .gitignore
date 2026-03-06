@@ -6,3 +6,6 @@ resrources
 resource/bin/
 dist
 ffmpeg_log.txt
+__pycache__
+*.pyc
+*.pyo
