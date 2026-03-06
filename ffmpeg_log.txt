@@ -1,0 +1,22 @@
+ffmpeg version 8.0.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+  built with gcc 15.2.0 (Rev8, Built by MSYS2 project)
+  configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-fontconfig --enable-iconv --enable-gnutls --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-zlib --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-sdl2 --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libaom --enable-libopenjpeg --enable-libvpx --enable-mediafoundation --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-openal --enable-libgme --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libtheora --enable-libvo-amrwbenc --enable-libgsm --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-librubberband
+  libavutil      60.  8.100 / 60.  8.100
+  libavcodec     62. 11.100 / 62. 11.100
+  libavformat    62.  3.100 / 62.  3.100
+  libavdevice    62.  1.100 / 62.  1.100
+  libavfilter    11.  4.100 / 11.  4.100
+  libswscale      9.  1.100 /  9.  1.100
+  libswresample   6.  1.100 /  6.  1.100
+[gdigrab @ 000001ca3c264e00] Capturing whole desktop as 1920x1080x32 at (0,0)
+[gdigrab @ 000001ca3c264e00] Stream #0: not enough frames to estimate rate; consider increasing probesize
+Input #0, gdigrab, from 'desktop':
+  Duration: N/A, start: 1772777162.065860, bitrate: 1990668 kb/s
+  Stream #0:0: Video: bmp, bgra, 1920x1080, 1990668 kb/s, 30 fps, 1000k tbr, 1000k tbn, start 1772777162.065860
+[aist#1:0/pcm_s16le @ 000001ca3c26ddc0] Guessed Channel Layout: stereo
+Input #1, dshow, from 'audio=Microphone (Audio Array AM-C1 Device)':
+  Duration: N/A, start: 4653.048000, bitrate: 1411 kb/s
+  Stream #1:0: Audio: pcm_s16le, 44100 Hz, stereo, s16, 1411 kb/s, start 4653.048000
+[in#2 @ 000001ca3c284380] Unknown input format: 'wasapi'
+Error opening input file loopback.
+Error opening input files: Invalid argument
