@@ -5,3 +5,4 @@ resources/bin/ffmpeg.exe
 resrources
 resource/bin/
 dist
+ffmpeg_log.txt
