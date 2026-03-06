@@ -18,32 +18,37 @@ def start_recording():
         "ffmpeg",
         "-f", "gdigrab",
         "-framerate", "30",
+        "-thread_queue_size", "512",        # prevent video buffer underrun
         "-i", "desktop",
         "-f", "dshow",
+        "-thread_queue_size", "512",        # prevent audio buffer underrun
         "-i", "audio=Microphone (Audio Array AM-C1 Device)",
+        "-f", "dshow",
+        "-thread_queue_size", "512",
+        "-i", "audio=Stereo Mix (Realtek(R) Audio)",
+        "-filter_complex", "amix=inputs=2:duration=longest,volume=2.0,adelay=500|500",
         "-vcodec", "libx264",
         "-preset", "ultrafast",
         "-crf", "23",
         "-acodec", "aac",
+        "-vsync", "1",                      # sync video to audio clock
+        "-async", "1",                      # stretch/squeeze audio to match video
         "-y",
         output_file
     ]
     
     print(f"Starting recording... saving to {output_file}")
-    
-    # Key: use PIPE for stdin, but keep stderr visible so we can see ffmpeg errors
     ffmpeg_process = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
-        stderr=open("ffmpeg_log.txt", "w"),  # Log errors to file instead of hiding them
+        stderr=open("ffmpeg_log.txt", "w"),
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
     )
     
-    # Give FFmpeg 2 seconds to start and check it didn't immediately crash
     time.sleep(2)
     if ffmpeg_process.poll() is not None:
-        print("FFmpeg failed to start! Check ffmpeg_log.txt for details")
+        print("FFmpeg failed! Check ffmpeg_log.txt")
         sys.exit(1)
     
     print("Recording started! Press Ctrl+C to stop and save.")
@@ -53,7 +58,6 @@ def stop_recording():
     if stopping or not ffmpeg_process:
         return
     stopping = True
-    
     print("\nStopping recording...")
     try:
         ffmpeg_process.stdin.write(b'q\n')

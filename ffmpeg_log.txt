@@ -1,6 +1,6 @@
-ffmpeg version 8.0.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+ffmpeg version 8.0.1-full_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
   built with gcc 15.2.0 (Rev8, Built by MSYS2 project)
-  configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-fontconfig --enable-iconv --enable-gnutls --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-zlib --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-sdl2 --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxvid --enable-libaom --enable-libopenjpeg --enable-libvpx --enable-mediafoundation --enable-libass --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-openal --enable-libgme --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libtheora --enable-libvo-amrwbenc --enable-libgsm --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-librubberband
+  configuration: --enable-gpl --enable-version3 --enable-static --disable-w32threads --disable-autodetect --enable-fontconfig --enable-iconv --enable-gnutls --enable-lcms2 --enable-libxml2 --enable-gmp --enable-bzlib --enable-lzma --enable-libsnappy --enable-zlib --enable-librist --enable-libsrt --enable-libssh --enable-libzmq --enable-avisynth --enable-libbluray --enable-libcaca --enable-libdvdnav --enable-libdvdread --enable-sdl2 --enable-libaribb24 --enable-libaribcaption --enable-libdav1d --enable-libdavs2 --enable-libopenjpeg --enable-libquirc --enable-libuavs3d --enable-libxevd --enable-libzvbi --enable-liboapv --enable-libqrencode --enable-librav1e --enable-libsvtav1 --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxeve --enable-libxvid --enable-libaom --enable-libjxl --enable-libvpx --enable-mediafoundation --enable-libass --enable-frei0r --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-liblensfun --enable-libvidstab --enable-libvmaf --enable-libzimg --enable-amf --enable-cuda-llvm --enable-cuvid --enable-dxva2 --enable-d3d11va --enable-d3d12va --enable-ffnvcodec --enable-libvpl --enable-nvdec --enable-nvenc --enable-vaapi --enable-libshaderc --enable-vulkan --enable-libplacebo --enable-opencl --enable-libcdio --enable-openal --enable-libgme --enable-libmodplug --enable-libopenmpt --enable-libopencore-amrwb --enable-libmp3lame --enable-libshine --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libcodec2 --enable-libilbc --enable-libgsm --enable-liblc3 --enable-libopencore-amrnb --enable-libopus --enable-libspeex --enable-libvorbis --enable-ladspa --enable-libbs2b --enable-libflite --enable-libmysofa --enable-librubberband --enable-libsoxr --enable-chromaprint --enable-whisper
   libavutil      60.  8.100 / 60.  8.100
   libavcodec     62. 11.100 / 62. 11.100
   libavformat    62.  3.100 / 62.  3.100
@@ -8,15 +8,52 @@ ffmpeg version 8.0.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the F
   libavfilter    11.  4.100 / 11.  4.100
   libswscale      9.  1.100 /  9.  1.100
   libswresample   6.  1.100 /  6.  1.100
-[gdigrab @ 000001ca3c264e00] Capturing whole desktop as 1920x1080x32 at (0,0)
-[gdigrab @ 000001ca3c264e00] Stream #0: not enough frames to estimate rate; consider increasing probesize
+-vsync is deprecated. Use -fps_mode
+Passing a number to -vsync is deprecated, use a string argument as described in the manual.
+[gdigrab @ 000002ca6855b2c0] Capturing whole desktop as 1920x1080x32 at (0,0)
+[gdigrab @ 000002ca6855b2c0] Stream #0: not enough frames to estimate rate; consider increasing probesize
 Input #0, gdigrab, from 'desktop':
-  Duration: N/A, start: 1772777162.065860, bitrate: 1990668 kb/s
-  Stream #0:0: Video: bmp, bgra, 1920x1080, 1990668 kb/s, 30 fps, 1000k tbr, 1000k tbn, start 1772777162.065860
-[aist#1:0/pcm_s16le @ 000001ca3c26ddc0] Guessed Channel Layout: stereo
+  Duration: N/A, start: 1772784580.250765, bitrate: 1990668 kb/s
+  Stream #0:0: Video: bmp, bgra, 1920x1080, 1990668 kb/s, 30 fps, 1000k tbr, 1000k tbn, start 1772784580.250765
+[aist#1:0/pcm_s16le @ 000002ca68560b80] Guessed Channel Layout: stereo
 Input #1, dshow, from 'audio=Microphone (Audio Array AM-C1 Device)':
-  Duration: N/A, start: 4653.048000, bitrate: 1411 kb/s
-  Stream #1:0: Audio: pcm_s16le, 44100 Hz, stereo, s16, 1411 kb/s, start 4653.048000
-[in#2 @ 000001ca3c284380] Unknown input format: 'wasapi'
-Error opening input file loopback.
-Error opening input files: Invalid argument
+  Duration: N/A, start: 12071.267000, bitrate: 1411 kb/s
+  Stream #1:0: Audio: pcm_s16le, 44100 Hz, stereo, s16, 1411 kb/s, start 12071.267000
+[aist#2:0/pcm_s16le @ 000002ca68578140] Guessed Channel Layout: stereo
+Input #2, dshow, from 'audio=Stereo Mix (Realtek(R) Audio)':
+  Duration: N/A, start: 12071.940000, bitrate: 1411 kb/s
+  Stream #2:0: Audio: pcm_s16le, 44100 Hz, stereo, s16, 1411 kb/s, start 12071.940000
+Stream mapping:
+  Stream #1:0 (pcm_s16le) -> amix
+  Stream #2:0 (pcm_s16le) -> amix
+  adelay:default -> Stream #0:0 (aac)
+  Stream #0:0 -> #0:1 (bmp (native) -> h264 (libx264))
+Press [q] to stop, [?] for help
+[libx264 @ 000002ca699ab3c0] using cpu capabilities: MMX2 SSE2Fast SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2
+[libx264 @ 000002ca699ab3c0] profile High 4:4:4 Predictive, level 4.0, 4:4:4, 8-bit
+[libx264 @ 000002ca699ab3c0] 264 - core 165 r3223 0480cb0 - H.264/MPEG-4 AVC codec - Copyleft 2003-2025 - http://www.videolan.org/x264.html - options: cabac=0 ref=1 deblock=0:0:0 analyse=0:0 me=dia subme=0 psy=1 psy_rd=1.00:0.00 mixed_ref=0 me_range=16 chroma_me=1 trellis=0 8x8dct=0 cqm=0 deadzone=21,11 fast_pskip=1 chroma_qp_offset=6 threads=30 lookahead_threads=5 sliced_threads=0 nr=0 decimate=1 interlaced=0 bluray_compat=0 constrained_intra=0 bframes=0 weightp=0 keyint=250 keyint_min=25 scenecut=0 intra_refresh=0 rc=crf mbtree=0 crf=23.0 qcomp=0.60 qpmin=0 qpmax=69 qpstep=4 ip_ratio=1.40 aq=0
+Output #0, mp4, to 'C:\Users\Jai Mishra\Downloads\projects\desktop-call-recorder-obs\test_recording.mp4':
+  Metadata:
+    encoder         : Lavf62.3.100
+  Stream #0:0: Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 128 kb/s
+    Metadata:
+      encoder         : Lavc62.11.100 aac
+  Stream #0:1: Video: h264 (avc1 / 0x31637661), yuv444p(tv, progressive), 1920x1080, q=2-31, 30 fps, 15360 tbn
+    Metadata:
+      encoder         : Lavc62.11.100 libx264
+    Side data:
+      cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A
+frame=   29 fps=0.0 q=13.0 size=     256KiB time=00:00:00.96 bitrate=2169.9kbits/s dup=43 drop=11 speed=1.93x elapsed=0:00:00.50    frame=   44 fps= 43 q=13.0 size=     256KiB time=00:00:01.46 bitrate=1430.1kbits/s dup=43 drop=13 speed=1.44x elapsed=0:00:01.01    frame=   59 fps= 39 q=13.0 size=     256KiB time=00:00:01.96 bitrate=1066.5kbits/s dup=43 drop=13 speed=1.28x elapsed=0:00:01.53    frame=   75 fps= 37 q=25.0 size=     256KiB time=00:00:02.50 bitrate= 839.0kbits/s dup=43 drop=13 speed=1.22x elapsed=0:00:02.04    frame=   91 fps= 35 q=13.0 size=     256KiB time=00:00:03.03 bitrate= 691.5kbits/s dup=43 drop=13 speed=1.18x elapsed=0:00:02.56    frame=  106 fps= 34 q=15.0 size=    1024KiB time=00:00:03.53 bitrate=2374.2kbits/s dup=43 drop=13 speed=1.15x elapsed=0:00:03.07    frame=  122 fps= 34 q=13.0 size=    1280KiB time=00:00:04.06 bitrate=2578.6kbits/s dup=43 drop=13 speed=1.13x elapsed=0:00:03.59    frame=  137 fps= 33 q=18.0 size=    1536KiB time=00:00:04.56 bitrate=2755.5kbits/s dup=43 drop=13 speed=1.11x elapsed=0:00:04.10    frame=  153 fps= 33 q=21.0 size=    1536KiB time=00:00:05.10 bitrate=2467.3kbits/s dup=43 drop=13 speed= 1.1x elapsed=0:00:04.62    frame=  168 fps= 33 q=20.0 size=    1792KiB time=00:00:05.60 bitrate=2621.5kbits/s dup=43 drop=13 speed=1.09x elapsed=0:00:05.14    frame=  184 fps= 33 q=22.0 size=    2048KiB time=00:00:06.13 bitrate=2735.5kbits/s dup=43 drop=13 speed=1.08x elapsed=0:00:05.65    frame=  199 fps= 32 q=22.0 size=    2304KiB time=00:00:06.63 bitrate=2845.4kbits/s dup=43 drop=13 speed=1.07x elapsed=0:00:06.17    frame=  215 fps= 32 q=24.0 size=    2816KiB time=00:00:07.16 bitrate=3218.9kbits/s dup=43 drop=13 speed=1.07x elapsed=0:00:06.68    frame=  230 fps= 32 q=22.0 size=    3072KiB time=00:00:07.66 bitrate=3282.5kbits/s dup=43 drop=13 speed=1.06x elapsed=0:00:07.20    frame=  246 fps= 32 q=13.0 size=    3584KiB time=00:00:08.20 bitrate=3580.6kbits/s dup=43 drop=13 speed=1.06x elapsed=0:00:07.71    frame=  261 fps= 32 q=18.0 size=    4608KiB time=00:00:08.70 bitrate=4339.0kbits/s dup=43 drop=13 speed=1.06x elapsed=0:00:08.23    frame=  276 fps= 32 q=13.0 size=    4864KiB time=00:00:09.20 bitrate=4331.1kbits/s dup=43 drop=13 speed=1.05x elapsed=0:00:08.75    
+
+[q] command received. Exiting.
+
+[out#0/mp4 @ 000002ca685a3d80] video:5817KiB audio:163KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.169326%
+frame=  322 fps= 34 q=-1.0 Lsize=    5990KiB time=00:00:10.51 bitrate=4665.1kbits/s dup=43 drop=13 speed=1.11x elapsed=0:00:09.51    
+[aac @ 000002ca685a5340] Qavg: 4103.726
+[libx264 @ 000002ca699ab3c0] frame I:2     Avg QP:19.00  size:255994
+[libx264 @ 000002ca699ab3c0] frame P:320   Avg QP:16.72  size: 17011
+[libx264 @ 000002ca699ab3c0] mb I  I16..4: 100.0%  0.0%  0.0%
+[libx264 @ 000002ca699ab3c0] mb P  I16..4:  5.2%  0.0%  0.0%  P16..4: 10.6%  0.0%  0.0%  0.0%  0.0%    skip:84.2%
+[libx264 @ 000002ca699ab3c0] coded y,u,v intra: 22.7% 2.7% 2.7% inter: 5.1% 0.8% 0.8%
+[libx264 @ 000002ca699ab3c0] i16 v,h,dc,p: 50% 29%  9% 12%
+[libx264 @ 000002ca699ab3c0] kb/s:4439.00
