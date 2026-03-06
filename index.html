@@ -1,10 +1,688 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Electron Demo</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NoteCall</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #222222;
+      --border-active: #3a3a3a;
+      --text: #e8e8e8;
+      --muted: #555555;
+      --accent: #00ff88;
+      --accent-dim: #00ff8822;
+      --danger: #ff4455;
+      --danger-dim: #ff445522;
+      --warn: #ffaa00;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    /* Subtle scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .titlebar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+    }
+
+    .titlebar-logo {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .titlebar-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      margin-left: auto;
+      transition: background 0.3s;
+    }
+
+    .titlebar-dot.active {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      gap: 20px;
+      overflow: auto;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .status-indicator.idle { background: var(--muted); }
+    .status-indicator.monitoring { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+    .status-indicator.recording { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite; }
+
+    .status-text { color: var(--muted); letter-spacing: 0.05em; }
+    .status-text span { color: var(--text); }
+
+    .status-timer {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+    }
+
+    /* Section label */
+    .section-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* Device selectors */
+    .devices-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .device-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .device-card:hover { border-color: var(--border-active); }
+
+    .device-card-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .device-card-label svg {
+      width: 10px;
+      height: 10px;
+      opacity: 0.5;
+    }
+
+    .device-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 12px;
+      padding: 8px 10px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: border-color 0.2s;
+    }
+
+    .device-select:focus { border-color: var(--accent); }
+    .device-select option { background: #111; }
+
+    .device-level {
+      margin-top: 8px;
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    .device-level-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.1s;
+      border-radius: 1px;
+    }
+
+    /* Detection section */
+    .detection-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .detection-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: border-color 0.3s;
+    }
+
+    .detection-item.detected {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .detection-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .detection-item.detected .detection-dot {
+      background: var(--accent);
+      box-shadow: 0 0 5px var(--accent);
+    }
+
+    .detection-name {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      transition: color 0.3s;
+    }
+
+    .detection-item.detected .detection-name { color: var(--text); }
+
+    /* Record button */
+    .record-section {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .record-btn {
+      width: 100%;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .record-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .record-btn:hover { border-color: var(--border-active); color: var(--text); }
+
+    .record-btn.start {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .record-btn.start::before { background: var(--accent-dim); opacity: 1; }
+    .record-btn.start:hover { box-shadow: 0 0 20px var(--accent-dim); }
+
+    .record-btn.stop {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .record-btn.stop::before { background: var(--danger-dim); opacity: 1; }
+    .record-btn.stop:hover { box-shadow: 0 0 20px var(--danger-dim); }
+
+    .record-icon {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    .record-btn.stop .record-icon {
+      border-radius: 2px;
+    }
+
+    /* Auto-detect toggle */
+    .auto-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .auto-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .toggle {
+      width: 32px;
+      height: 18px;
+      background: var(--border);
+      border-radius: 9px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle.on { background: var(--accent); }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: white;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+    }
+
+    .toggle.on::after { transform: translateX(14px); }
+
+    /* Waveform */
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      height: 20px;
+    }
+
+    .wave-bar {
+      width: 2px;
+      background: var(--accent);
+      border-radius: 1px;
+      opacity: 0.3;
+      height: 4px;
+      transition: height 0.1s, opacity 0.1s;
+    }
+
+    .waveform.active .wave-bar {
+      opacity: 0.8;
+      animation: wave 0.8s ease-in-out infinite;
+    }
+
+    .waveform.active .wave-bar:nth-child(1) { animation-delay: 0.0s; }
+    .waveform.active .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    .waveform.active .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    .waveform.active .wave-bar:nth-child(4) { animation-delay: 0.1s; }
+    .waveform.active .wave-bar:nth-child(5) { animation-delay: 0.0s; }
+
+    @keyframes wave {
+      0%, 100% { height: 4px; }
+      50% { height: 16px; }
+    }
+
+    /* Bottom bar */
+    .bottom-bar {
+      height: 28px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .bottom-item {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .bottom-item.ok { color: var(--accent); }
+    .bottom-item.err { color: var(--danger); }
+  </style>
 </head>
 <body>
-  <h1>Hello Electron</h1>
-  <p>Your first desktop app is running.</p>
+
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <span class="titlebar-logo">NoteCall</span>
+    <div class="titlebar-dot" id="titleDot"></div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- Status -->
+    <div class="status-bar">
+      <div class="status-indicator idle" id="statusIndicator"></div>
+      <span class="status-text" id="statusText">IDLE — <span>waiting for call</span></span>
+      <div class="waveform" id="waveform">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+      <span class="status-timer" id="timer">00:00:00</span>
+    </div>
+
+    <!-- Devices -->
+    <div>
+      <div class="section-label">Audio Devices</div>
+      <div class="devices-grid">
+
+        <div class="device-card">
+          <div class="device-card-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            Microphone
+          </div>
+          <select class="device-select" id="micSelect">
+            <option>Microphone (Audio Array AM-C1 Device)</option>
+            <option>Loading devices...</option>
+          </select>
+          <div class="device-level">
+            <div class="device-level-bar" id="micLevel"></div>
+          </div>
+        </div>
+
+        <div class="device-card">
+          <div class="device-card-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            System Audio
+          </div>
+          <select class="device-select" id="stereoSelect">
+            <option>Stereo Mix (Realtek(R) Audio)</option>
+            <option>Loading devices...</option>
+          </select>
+          <div class="device-level">
+            <div class="device-level-bar" id="stereoLevel"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Detection -->
+    <div>
+      <div class="section-label">Call Detection</div>
+      <div class="detection-grid">
+        <div class="detection-item" id="detectMic">
+          <div class="detection-dot"></div>
+          <span class="detection-name">Mic Active</span>
+        </div>
+        <div class="detection-item" id="detectWhatsApp">
+          <div class="detection-dot"></div>
+          <span class="detection-name">WhatsApp</span>
+        </div>
+        <div class="detection-item" id="detectMeet">
+          <div class="detection-dot"></div>
+          <span class="detection-name">Google Meet</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto detect toggle -->
+    <div class="auto-row">
+      <span class="auto-label">AUTO-RECORD when call detected</span>
+      <div class="toggle on" id="autoToggle" onclick="toggleAuto()"></div>
+    </div>
+
+    <!-- Record button -->
+    <div class="record-section">
+      <button class="record-btn start" id="recordBtn" onclick="toggleRecording()">
+        <div class="record-icon"></div>
+        Start Recording
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom-bar">
+    <span class="bottom-item ok" id="ffmpegStatus">● ffmpeg ok</span>
+    <span class="bottom-item" id="micStatus">○ mic</span>
+    <span class="bottom-item" id="stereoStatus">○ stereo</span>
+    <span class="bottom-item" style="margin-left:auto" id="versionLabel">v0.1.0</span>
+  </div>
+
+<script>
+  let recording = false;
+  let autoRecord = true;
+  let timerInterval = null;
+  let seconds = 0;
+
+  // --- Timer ---
+  function startTimer() {
+    seconds = 0;
+    timerInterval = setInterval(() => {
+      seconds++;
+      const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+      const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      document.getElementById('timer').textContent = `${h}:${m}:${s}`;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    document.getElementById('timer').textContent = '00:00:00';
+  }
+
+  // --- Recording toggle ---
+  function toggleRecording() {
+    recording = !recording;
+    updateRecordingUI();
+
+    // Send to Electron main process
+    if (window.electronAPI) {
+      if (recording) {
+        window.electronAPI.startRecording({
+          mic: document.getElementById('micSelect').value,
+          stereo: document.getElementById('stereoSelect').value
+        });
+      } else {
+        window.electronAPI.stopRecording();
+      }
+    }
+  }
+
+  function updateRecordingUI() {
+    const btn = document.getElementById('recordBtn');
+    const indicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const waveform = document.getElementById('waveform');
+    const dot = document.getElementById('titleDot');
+
+    if (recording) {
+      btn.className = 'record-btn stop';
+      btn.innerHTML = '<div class="record-icon"></div> Stop Recording';
+      indicator.className = 'status-indicator recording';
+      statusText.innerHTML = 'RECORDING — <span>call in progress</span>';
+      waveform.classList.add('active');
+      dot.classList.add('active');
+      startTimer();
+    } else {
+      btn.className = 'record-btn start';
+      btn.innerHTML = '<div class="record-icon"></div> Start Recording';
+      indicator.className = 'status-indicator idle';
+      statusText.innerHTML = 'IDLE — <span>waiting for call</span>';
+      waveform.classList.remove('active');
+      dot.classList.remove('active');
+      stopTimer();
+    }
+  }
+
+  // --- Auto toggle ---
+  function toggleAuto() {
+    autoRecord = !autoRecord;
+    const t = document.getElementById('autoToggle');
+    t.classList.toggle('on', autoRecord);
+    if (window.electronAPI) {
+      window.electronAPI.setAutoRecord(autoRecord);
+    }
+  }
+
+  // --- Detection state updates (called from Electron main) ---
+  function updateDetection(state) {
+    // state = { mic, whatsapp, meet, recording }
+    setDetected('detectMic', state.mic);
+    setDetected('detectWhatsApp', state.whatsapp);
+    setDetected('detectMeet', state.meet);
+
+    // Sync recording state if auto-triggered
+    if (state.recording !== recording) {
+      recording = state.recording;
+      updateRecordingUI();
+    }
+
+    // Level bars (fake animation when active)
+    document.getElementById('micLevel').style.width = state.mic ? `${40 + Math.random() * 40}%` : '0%';
+    document.getElementById('stereoLevel').style.width = state.recording ? `${30 + Math.random() * 50}%` : '0%';
+
+    // Bottom bar
+    document.getElementById('micStatus').className = state.mic ? 'bottom-item ok' : 'bottom-item';
+    document.getElementById('micStatus').textContent = state.mic ? '● mic active' : '○ mic';
+    document.getElementById('stereoStatus').className = state.recording ? 'bottom-item ok' : 'bottom-item';
+  }
+
+  function setDetected(id, active) {
+    const el = document.getElementById(id);
+    el.classList.toggle('detected', active);
+  }
+
+  // --- Load devices from Electron ---
+  if (window.electronAPI) {
+    window.electronAPI.getAudioDevices().then(devices => {
+      populateSelect('micSelect', devices.mics);
+      populateSelect('stereoSelect', devices.stereos);
+    });
+
+    // Listen for detection updates from main process
+    window.electronAPI.onDetectionUpdate(updateDetection);
+  }
+
+  function populateSelect(id, items) {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '';
+    items.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // Dev mode: simulate detection updates for preview
+  if (!window.electronAPI) {
+    let tick = 0;
+    setInterval(() => {
+      tick++;
+      updateDetection({
+        mic: tick % 6 > 2,
+        whatsapp: tick % 10 > 6,
+        meet: false,
+        recording: tick % 10 > 6
+      });
+    }, 1000);
+  }
+</script>
+
 </body>
 </html>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 
@@ -24,9 +24,6 @@ function startPythonDetector() {
     const ffmpegPath = getFFmpegPath()
     const scriptPath = getPythonScriptPath()
 
-    console.log('FFmpeg path:', ffmpegPath)
-    console.log('Python script:', scriptPath)
-
     pythonProcess = spawn('python', [scriptPath, '--ffmpeg', ffmpegPath], {
         stdio: ['pipe', 'pipe', 'pipe']
     })
@@ -47,7 +44,10 @@ function startPythonDetector() {
 function createWindow() {
     const win = new BrowserWindow({
         width: 800,
-        height: 600
+        height: 600,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js')  // ← this is the key line
+        }
     })
     win.loadFile('index.html')
 }
@@ -57,7 +57,6 @@ app.whenReady().then(() => {
     startPythonDetector()
 })
 
-// Kill Python when app closes
 app.on('before-quit', () => {
     if (pythonProcess) {
         pythonProcess.kill()
