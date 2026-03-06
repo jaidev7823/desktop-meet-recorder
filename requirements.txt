@@ -4,3 +4,4 @@ psutil
 pygetwindow
 sounddevice
 numpy
+pywin32; platform_system == "Windows"

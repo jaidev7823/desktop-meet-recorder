@@ -19,7 +19,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^40.7.0"
+    "electron": "^40.8.0"
   },
   "dependencies": {
     "@arcsine/screen-recorder": "^0.2.9"
