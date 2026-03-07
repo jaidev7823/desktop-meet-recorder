@@ -208,6 +208,33 @@ ipcMain.handle('get-audio-devices', async () => {
   return fallbackDevices;
 });
 
+function getConfigPath() {
+  return path.join(app.getPath('userData'), 'integrations.json');
+}
+
+ipcMain.handle('save-integrations', async (_, settings) => {
+  try {
+    const configPath = getConfigPath();
+    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Failed to save integrations:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('load-integrations', async () => {
+  try {
+    const configPath = getConfigPath();
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (error) {
+    console.error('Failed to load integrations:', error);
+  }
+  return null;
+});
+
 app.whenReady().then(() => {
   createWindow();
   startPythonDetector();

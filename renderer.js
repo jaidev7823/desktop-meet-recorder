@@ -3,6 +3,12 @@ let autoRecord = true;
 let timerInterval = null;
 let elapsedSeconds = 0;
 
+let integrations = {
+  notion: { enabled: false, apiKey: '' },
+  gemini: { enabled: false, apiKey: '' },
+  whisper: { mode: 'local', apiKey: '' }
+};
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -161,9 +167,74 @@ function applyDetectionState(data) {
   }
 }
 
+function updateToggle(id, enabled) {
+  const btn = el(id);
+  if (enabled) {
+    btn.className = 'w-10 h-5 rounded-full bg-emerald-600 relative transition';
+    btn.innerHTML = '<span class="absolute right-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition"></span>';
+  } else {
+    btn.className = 'w-10 h-5 rounded-full bg-slate-700 relative transition';
+    btn.innerHTML = '<span class="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-slate-400 transition"></span>';
+  }
+}
+
+function toggleIntegration(name) {
+  integrations[name].enabled = !integrations[name].enabled;
+  updateToggle(`${name}Toggle`, integrations[name].enabled);
+  saveIntegrations();
+}
+
+function saveIntegrations() {
+  const settings = {
+    notion: { enabled: integrations.notion.enabled, apiKey: el('notionKey').value },
+    gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value },
+    whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value }
+  };
+  
+  if (window.electronAPI) {
+    window.electronAPI.saveIntegrations(settings);
+  }
+  console.log('Integrations saved:', settings);
+}
+
+function loadIntegrations() {
+  if (!window.electronAPI) return;
+  
+  try {
+    const settings = window.electronAPI.loadIntegrations();
+    if (settings) {
+      if (settings.notion) {
+        el('notionKey').value = settings.notion.apiKey || '';
+        integrations.notion.enabled = settings.notion.enabled || false;
+        updateToggle('notionToggle', integrations.notion.enabled);
+      }
+      if (settings.gemini) {
+        el('geminiKey').value = settings.gemini.apiKey || '';
+        integrations.gemini.enabled = settings.gemini.enabled || false;
+        updateToggle('geminiToggle', integrations.gemini.enabled);
+      }
+      if (settings.whisper) {
+        el('whisperMode').value = settings.whisper.mode || 'local';
+        el('whisperKey').value = settings.whisper.apiKey || '';
+      }
+    }
+  } catch (e) {
+    console.log('Could not load integrations:', e);
+  }
+}
+
 async function initializeRenderer() {
   el('recordBtn').addEventListener('click', toggleRecording);
   el('autoToggle').addEventListener('click', toggleAutoRecord);
+
+  el('notionToggle').addEventListener('click', () => toggleIntegration('notion'));
+  el('geminiToggle').addEventListener('click', () => toggleIntegration('gemini'));
+  el('whisperMode').addEventListener('change', saveIntegrations);
+  el('notionKey').addEventListener('input', saveIntegrations);
+  el('geminiKey').addEventListener('input', saveIntegrations);
+  el('whisperKey').addEventListener('input', saveIntegrations);
+
+  loadIntegrations();
 
   updateStatusUI();
 
