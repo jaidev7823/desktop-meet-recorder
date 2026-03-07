@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
   saveIntegrations: (settings) => ipcRenderer.invoke('save-integrations', settings),
   loadIntegrations: () => ipcRenderer.invoke('load-integrations'),
+  saveRecording: (data) => ipcRenderer.invoke('save-recording', data),
+  getRecordings: (limit) => ipcRenderer.invoke('get-recordings', limit),
   onDetectionUpdate: (cb) => ipcRenderer.on('detection-update', (_, data) => cb(data)),
   onBackendStatus: (cb) => ipcRenderer.on('backend-status', (_, data) => cb(data)),
   onBackendError: (cb) => ipcRenderer.on('backend-error', (_, data) => cb(data)),

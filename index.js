@@ -237,6 +237,31 @@ ipcMain.handle('load-integrations', async () => {
   return null;
 });
 
+ipcMain.handle('save-recording', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('save_recording', { data });
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Failed to save recording');
+  } catch (error) {
+    console.error('Failed to save recording:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('get-recordings', async (_, limit = 50) => {
+  try {
+    const response = await sendCommandToPython('get_recordings', { limit });
+    if (response.ok && response.data) {
+      return response.data.recordings;
+    }
+  } catch (error) {
+    console.error('Failed to get recordings:', error);
+  }
+  return [];
+});
+
 app.whenReady().then(() => {
   createWindow();
   startPythonDetector();
