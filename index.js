@@ -214,8 +214,10 @@ function getConfigPath() {
 
 ipcMain.handle('save-integrations', async (_, settings) => {
   try {
-    const configPath = getConfigPath();
-    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));
+    const response = await sendCommandToPython('save_integrations', { data: settings });
+    if (response.ok === false) {
+      throw new Error(response.error || 'Failed to save integrations');
+    }
     return true;
   } catch (error) {
     console.error('Failed to save integrations:', error);
@@ -225,9 +227,9 @@ ipcMain.handle('save-integrations', async (_, settings) => {
 
 ipcMain.handle('load-integrations', async () => {
   try {
-    const configPath = getConfigPath();
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const response = await sendCommandToPython('get_integrations');
+    if (response.ok && response.data) {
+      return response.data;
     }
   } catch (error) {
     console.error('Failed to load integrations:', error);
