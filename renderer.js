@@ -198,7 +198,8 @@ function collectIntegrationSettings() {
     notion: {
       enabled: integrations.notion.enabled,
       apiKey: el('notionKey').value.trim(),
-      parentPageId: el('notionParentPageId').value.trim()
+      parentPageId: el('notionParentPageId').value.trim(),
+      notionId: el('notionParentPageId').value.trim()
     },
     gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value.trim() },
     whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value.trim() }

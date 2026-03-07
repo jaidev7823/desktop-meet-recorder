@@ -291,12 +291,14 @@ def command_loop():
 
             if action == "save_integrations" and save_integrations:
                 data = message.get("data", {})
+                notion_parent_page_id = data.get("notion", {}).get(
+                    "parentPageId", ""
+                ) or data.get("notion", {}).get("notionId", "")
                 save_integrations(
                     notion_enabled=data.get("notion", {}).get("enabled", False),
                     notion_api_key=data.get("notion", {}).get("apiKey", ""),
-                    notion_parent_page_id=data.get("notion", {}).get(
-                        "parentPageId", ""
-                    ),
+                    notion_parent_page_id=notion_parent_page_id,
+                    notion_id=notion_parent_page_id,
                     gemini_enabled=data.get("gemini", {}).get("enabled", False),
                     gemini_api_key=data.get("gemini", {}).get("apiKey", ""),
                     whisper_mode=data.get("whisper", {}).get("mode", "local"),
