@@ -9,11 +9,19 @@ import time
 from typing import Dict, List
 
 try:
-    from database import init_databases, get_integrations, save_integrations
+    from database import (
+        init_databases,
+        get_integrations,
+        save_integrations,
+        save_recording,
+        get_recordings,
+    )
 except Exception:
     init_databases = None
     get_integrations = None
     save_integrations = None
+    save_recording = None
+    get_recordings = None
 
 DETECTION_IMPORT_ERROR = None
 RECORDING_IMPORT_ERROR = None
@@ -274,6 +282,21 @@ def command_loop():
                     whisper_api_key=data.get("whisper", {}).get("apiKey", ""),
                 )
                 emit_response(request_id, True)
+                continue
+
+            if action == "save_recording" and save_recording:
+                rec_data = message.get("data", {})
+                recording_id = save_recording(
+                    filename=rec_data.get("filename", ""),
+                    filepath=rec_data.get("filepath", ""),
+                    duration_seconds=rec_data.get("duration", 0),
+                )
+                emit_response(request_id, True, {"id": recording_id})
+                continue
+
+            if action == "get_recordings" and get_recordings:
+                recordings = get_recordings(limit=message.get("limit", 50))
+                emit_response(request_id, True, {"recordings": recordings})
                 continue
 
             emit_response(request_id, False, error=f"Unknown action: {action}")
