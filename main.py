@@ -15,13 +15,31 @@ try:
         save_integrations,
         save_recording,
         get_recordings,
+        get_recording,
+        update_recording,
+        save_chat_message_db,
+        get_chat_history,
     )
-except Exception:
-    init_databases = None
-    get_integrations = None
-    save_integrations = None
-    save_recording = None
-    get_recordings = None
+except Exception as e:
+    print("Database import failed:", e)
+    raise
+
+try:
+    from integrations import (
+        create_notion_page,
+        generate_summary_gemini,
+        chat_with_gemini,
+        transcribe_audio,
+    )
+
+    INTEGRATIONS_AVAILABLE = True
+except Exception as e:
+    print("Integrations import failed:", e)
+    INTEGRATIONS_AVAILABLE = False
+    create_notion_page = None
+    generate_summary_gemini = None
+    chat_with_gemini = None
+    transcribe_audio = None
 
 DETECTION_IMPORT_ERROR = None
 RECORDING_IMPORT_ERROR = None
@@ -299,6 +317,191 @@ def command_loop():
                 emit_response(request_id, True, {"recordings": recordings})
                 continue
 
+            if (
+                action == "transcribe_audio"
+                and transcribe_audio
+                and INTEGRATIONS_AVAILABLE
+            ):
+                data = message.get("data", {})
+                audio_path = data.get("audioPath", "")
+                mode = data.get("mode", "local")
+                api_key = data.get("apiKey", "")
+
+                if not audio_path:
+                    emit_response(request_id, False, error="No audio path provided")
+                    continue
+
+                transcript = transcribe_audio(audio_path, mode, api_key or None)
+                if transcript:
+                    emit_response(request_id, True, {"transcript": transcript})
+                else:
+                    emit_response(request_id, False, error="Transcription failed")
+                continue
+
+            if (
+                action == "summarize_with_gemini"
+                and generate_summary_gemini
+                and INTEGRATIONS_AVAILABLE
+            ):
+                data = message.get("data", {})
+                transcript = data.get("transcript", "")
+                api_key = data.get("apiKey", "")
+
+                if not api_key:
+                    integrations_data = get_integrations() if get_integrations else {}
+                    api_key = integrations_data.get("gemini_api_key", "")
+
+                if not api_key:
+                    emit_response(
+                        request_id, False, error="No Gemini API key configured"
+                    )
+                    continue
+
+                summary = generate_summary_gemini(api_key, transcript)
+                if summary:
+                    emit_response(request_id, True, {"summary": summary})
+                else:
+                    emit_response(request_id, False, error="Summary generation failed")
+                continue
+
+            if (
+                action == "chat_with_gemini"
+                and chat_with_gemini
+                and INTEGRATIONS_AVAILABLE
+            ):
+                data = message.get("data", {})
+                user_message = data.get("message", "")
+                api_key = data.get("apiKey", "")
+                recording_id = data.get("recordingId")
+
+                if not api_key:
+                    integrations_data = get_integrations() if get_integrations else {}
+                    api_key = integrations_data.get("gemini_api_key", "")
+
+                if not api_key:
+                    emit_response(
+                        request_id, False, error="No Gemini API key configured"
+                    )
+                    continue
+
+                history = None
+                if recording_id and get_chat_history:
+                    raw_history = get_chat_history(limit=20)
+                    history = [
+                        {"role": msg["role"], "parts": [msg["content"]]}
+                        for msg in reversed(raw_history)
+                        if msg.get("recording_id") == recording_id
+                        or msg.get("recording_id") is None
+                    ]
+
+                response = chat_with_gemini(api_key, user_message, history)
+                if response:
+                    if save_chat_message_db and recording_id:
+                        save_chat_message_db("user", user_message, recording_id)
+                        save_chat_message_db("assistant", response, recording_id)
+                    emit_response(request_id, True, {"response": response})
+                else:
+                    emit_response(request_id, False, error="Chat failed")
+                continue
+
+            if (
+                action == "create_notion_page"
+                and create_notion_page
+                and INTEGRATIONS_AVAILABLE
+            ):
+                data = message.get("data", {})
+                title = data.get("title", "")
+                content = data.get("content", "")
+                parent_page_id = data.get("parentPageId", "")
+                api_key = data.get("apiKey", "")
+
+                if not api_key:
+                    integrations_data = get_integrations() if get_integrations else {}
+                    api_key = integrations_data.get("notion_api_key", "")
+
+                if not api_key or not parent_page_id:
+                    emit_response(
+                        request_id,
+                        False,
+                        error="Notion API key or parent page ID not configured",
+                    )
+                    continue
+
+                page_id = create_notion_page(api_key, parent_page_id, title, content)
+                if page_id:
+                    emit_response(request_id, True, {"pageId": page_id})
+                else:
+                    emit_response(
+                        request_id, False, error="Failed to create Notion page"
+                    )
+                continue
+
+            if action == "process_recording" and INTEGRATIONS_AVAILABLE:
+                data = message.get("data", {})
+                recording_id = data.get("recordingId")
+                audio_path = data.get("audioPath", "")
+
+                if not recording_id or not audio_path:
+                    emit_response(
+                        request_id, False, error="Missing recording ID or audio path"
+                    )
+                    continue
+
+                integrations_data = get_integrations() if get_integrations else {}
+                results = {"recordingId": recording_id}
+
+                if transcribe_audio:
+                    mode = integrations_data.get("whisper_mode", "local")
+                    api_key = integrations_data.get("whisper_api_key", "")
+                    transcript = transcribe_audio(audio_path, mode, api_key or None)
+                    if transcript:
+                        results["transcript"] = transcript
+                        if update_recording:
+                            update_recording(recording_id, transcript=transcript)
+
+                if (
+                    generate_summary_gemini
+                    and integrations_data.get("gemini_enabled")
+                    and integrations_data.get("gemini_api_key")
+                ):
+                    transcript = results.get("transcript", "")
+                    if transcript:
+                        summary = generate_summary_gemini(
+                            integrations_data["gemini_api_key"], transcript
+                        )
+                        if summary:
+                            results["summary"] = summary
+                            if update_recording:
+                                update_recording(recording_id, gemini_summary=summary)
+
+                if (
+                    create_notion_page
+                    and integrations_data.get("notion_enabled")
+                    and integrations_data.get("notion_api_key")
+                ):
+                    parent_id = data.get("notionParentPageId")
+                    if parent_id:
+                        transcript = results.get("transcript", "")
+                        summary = results.get("summary", "")
+                        content = (
+                            f"Summary:\n{summary}\n\nTranscript:\n{transcript}"
+                            if summary
+                            else transcript
+                        )
+                        page_id = create_notion_page(
+                            integrations_data["notion_api_key"],
+                            parent_id,
+                            f"Meeting Recording {recording_id}",
+                            content,
+                        )
+                        if page_id:
+                            results["notionPageId"] = page_id
+                            if update_recording:
+                                update_recording(recording_id, notion_page_id=page_id)
+
+                emit_response(request_id, True, results)
+                continue
+
             emit_response(request_id, False, error=f"Unknown action: {action}")
         except Exception as exc:
             emit_response(request_id or "", False, error=str(exc))
@@ -307,6 +510,8 @@ def command_loop():
 
 
 def main():
+    print("init_databases =", init_databases)
+
     if init_databases:
         try:
             init_databases()

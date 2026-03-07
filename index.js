@@ -262,6 +262,71 @@ ipcMain.handle('get-recordings', async (_, limit = 50) => {
   return [];
 });
 
+ipcMain.handle('transcribe-audio', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('transcribe_audio', { data }, 120000);
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Transcription failed');
+  } catch (error) {
+    console.error('Failed to transcribe audio:', error);
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('summarize-with-gemini', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('summarize_with_gemini', { data }, 60000);
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Summary generation failed');
+  } catch (error) {
+    console.error('Failed to generate summary:', error);
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('chat-with-gemini', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('chat_with_gemini', { data }, 60000);
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Chat failed');
+  } catch (error) {
+    console.error('Failed to chat with Gemini:', error);
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('create-notion-page', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('create_notion_page', { data }, 30000);
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Failed to create Notion page');
+  } catch (error) {
+    console.error('Failed to create Notion page:', error);
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('process-recording', async (_, data) => {
+  try {
+    const response = await sendCommandToPython('process_recording', { data }, 300000);
+    if (response.ok && response.data) {
+      return response.data;
+    }
+    throw new Error(response.error || 'Processing failed');
+  } catch (error) {
+    console.error('Failed to process recording:', error);
+    return { error: error.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   startPythonDetector();

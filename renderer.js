@@ -266,7 +266,37 @@ async function sendChatMessage() {
   addChatMessage('user', message);
   input.value = '';
   
-  addChatMessage('assistant', 'Processing... (Gemini integration coming soon)');
+  if (!window.electronAPI) {
+    addChatMessage('assistant', 'Electron bridge not available');
+    return;
+  }
+
+  try {
+    const response = await window.electronAPI.chatWithGemini({ message });
+    if (response && response.response) {
+      addChatMessage('assistant', response.response);
+    } else {
+      addChatMessage('assistant', response?.error || 'Failed to get response');
+    }
+  } catch (e) {
+    addChatMessage('assistant', 'Error: ' + (e.message || 'Unknown error'));
+  }
+}
+
+async function processRecording(recordingId, audioPath, notionParentPageId = null) {
+  if (!window.electronAPI) return null;
+  
+  try {
+    const result = await window.electronAPI.processRecording({
+      recordingId,
+      audioPath,
+      notionParentPageId,
+    });
+    return result;
+  } catch (e) {
+    console.error('Failed to process recording:', e);
+    return null;
+  }
 }
 
 async function initializeRenderer() {

@@ -6,3 +6,7 @@ sounddevice
 numpy
 lancedb
 pywin32; platform_system == "Windows"
+google-generativeai
+openai
+httpx
+pydub
