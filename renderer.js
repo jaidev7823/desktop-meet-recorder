@@ -9,6 +9,8 @@ let integrations = {
   whisper: { mode: 'local', apiKey: '' }
 };
 
+let activePage = 'recording';
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -16,7 +18,14 @@ function el(id) {
 function setBackendMessage(message, isError = false) {
   const target = el('backendMessage');
   target.textContent = `Backend: ${message}`;
-  target.className = `text-sm font-mono ${isError ? 'text-red-400' : 'text-slate-400'}`;
+  target.className = `text-xs font-mono ${isError ? 'text-red-400' : 'text-slate-400'}`;
+}
+
+function setIntegrationStatus(message, isError = false) {
+  const target = el('integrationSaveStatus');
+  if (!target) return;
+  target.textContent = message;
+  target.className = `text-sm ${isError ? 'text-red-400' : 'text-slate-400'}`;
 }
 
 function setDetectionCard(id, active, label) {
@@ -35,7 +44,7 @@ function updateStatusUI() {
   const ffmpegStatus = el('ffmpegStatus');
 
   statusIndicator.className = `w-3 h-3 rounded-full ${recording ? 'bg-ok shadow-[0_0_0_6px_rgba(34,197,94,0.2)]' : 'bg-slate-500'}`;
-  titleDot.className = `w-3 h-3 rounded-full ${recording ? 'bg-ok' : 'bg-slate-500'}`;
+  titleDot.className = `w-2.5 h-2.5 rounded-full ${recording ? 'bg-ok' : 'bg-slate-500'}`;
 
   if (recording) {
     statusLabel.textContent = 'Recording in progress';
@@ -136,7 +145,7 @@ async function toggleAutoRecord() {
   autoRecord = !autoRecord;
   const button = el('autoToggle');
   button.textContent = autoRecord ? 'Enabled' : 'Disabled';
-  button.className = `mt-3 inline-flex items-center px-3 py-2 rounded-lg border text-sm transition ${autoRecord ? 'border-ok bg-emerald-900/30 text-emerald-300' : 'border-line bg-slate-800 text-slate-300 hover:bg-slate-700'}`;
+  button.className = `mt-2 inline-flex items-center px-3 py-2 rounded-lg border text-sm transition ${autoRecord ? 'border-ok bg-emerald-900/30 text-emerald-300' : 'border-line bg-slate-800 text-slate-300 hover:bg-slate-700'}`;
 
   if (!window.electronAPI) {
     return;
@@ -159,7 +168,7 @@ function applyDetectionState(data) {
     autoRecord = data.autoRecord;
     const button = el('autoToggle');
     button.textContent = autoRecord ? 'Enabled' : 'Disabled';
-    button.className = `mt-3 inline-flex items-center px-3 py-2 rounded-lg border text-sm transition ${autoRecord ? 'border-ok bg-emerald-900/30 text-emerald-300' : 'border-line bg-slate-800 text-slate-300 hover:bg-slate-700'}`;
+    button.className = `mt-2 inline-flex items-center px-3 py-2 rounded-lg border text-sm transition ${autoRecord ? 'border-ok bg-emerald-900/30 text-emerald-300' : 'border-line bg-slate-800 text-slate-300 hover:bg-slate-700'}`;
   }
 
   if (typeof data.recording === 'boolean') {
@@ -181,61 +190,116 @@ function updateToggle(id, enabled) {
 function toggleIntegration(name) {
   integrations[name].enabled = !integrations[name].enabled;
   updateToggle(`${name}Toggle`, integrations[name].enabled);
-  saveIntegrations();
+  setIntegrationStatus('Unsaved changes');
 }
 
-function saveIntegrations() {
-  const settings = {
-    notion: { enabled: integrations.notion.enabled, apiKey: el('notionKey').value },
-    gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value },
-    whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value }
+function collectIntegrationSettings() {
+  return {
+    notion: { enabled: integrations.notion.enabled, apiKey: el('notionKey').value.trim() },
+    gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value.trim() },
+    whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value.trim() }
   };
-  
-  if (window.electronAPI) {
-    window.electronAPI.saveIntegrations(settings);
-  }
-  console.log('Integrations saved:', settings);
 }
 
-function loadIntegrations() {
-  if (!window.electronAPI) return;
-  
-  try {
-    const settings = window.electronAPI.loadIntegrations();
-    if (settings) {
-      if (settings.notion) {
-        el('notionKey').value = settings.notion.apiKey || '';
-        integrations.notion.enabled = settings.notion.enabled || false;
-        updateToggle('notionToggle', integrations.notion.enabled);
-      }
-      if (settings.gemini) {
-        el('geminiKey').value = settings.gemini.apiKey || '';
-        integrations.gemini.enabled = settings.gemini.enabled || false;
-        updateToggle('geminiToggle', integrations.gemini.enabled);
-      }
-      if (settings.whisper) {
-        el('whisperMode').value = settings.whisper.mode || 'local';
-        el('whisperKey').value = settings.whisper.apiKey || '';
-      }
-    }
-  } catch (e) {
-    console.log('Could not load integrations:', e);
+async function saveIntegrations() {
+  const settings = collectIntegrationSettings();
+
+  if (!window.electronAPI) {
+    setIntegrationStatus('Electron bridge not available', true);
+    return false;
   }
+
+  try {
+    const ok = await window.electronAPI.saveIntegrations(settings);
+    if (!ok) {
+      throw new Error('Backend save returned false');
+    }
+    setIntegrationStatus('Integration keys saved to database');
+    return true;
+  } catch (e) {
+    setIntegrationStatus(`Save failed: ${e.message || 'Unknown error'}`, true);
+    return false;
+  }
+}
+
+async function loadIntegrations() {
+  if (!window.electronAPI) return;
+
+  try {
+    const settings = await window.electronAPI.loadIntegrations();
+    if (!settings) return;
+
+    const hasNested = settings.notion || settings.gemini || settings.whisper;
+
+    if (hasNested) {
+      integrations.notion.enabled = !!settings.notion?.enabled;
+      integrations.gemini.enabled = !!settings.gemini?.enabled;
+      integrations.whisper.mode = settings.whisper?.mode || 'local';
+
+      el('notionKey').value = settings.notion?.apiKey || '';
+      el('geminiKey').value = settings.gemini?.apiKey || '';
+      el('whisperMode').value = settings.whisper?.mode || 'local';
+      el('whisperKey').value = settings.whisper?.apiKey || '';
+    } else {
+      integrations.notion.enabled = Boolean(Number(settings.notion_enabled || 0));
+      integrations.gemini.enabled = Boolean(Number(settings.gemini_enabled || 0));
+      integrations.whisper.mode = settings.whisper_mode || 'local';
+
+      el('notionKey').value = settings.notion_api_key || '';
+      el('geminiKey').value = settings.gemini_api_key || '';
+      el('whisperMode').value = settings.whisper_mode || 'local';
+      el('whisperKey').value = settings.whisper_api_key || '';
+    }
+
+    updateToggle('notionToggle', integrations.notion.enabled);
+    updateToggle('geminiToggle', integrations.gemini.enabled);
+    setIntegrationStatus('Loaded saved integration settings');
+  } catch (e) {
+    setIntegrationStatus(`Could not load settings: ${e.message || 'Unknown error'}`, true);
+  }
+}
+
+function setActivePage(page) {
+  activePage = page;
+
+  const pages = {
+    recording: el('pageRecording'),
+    integrations: el('pageIntegrations'),
+    ai: el('pageAI')
+  };
+
+  const nav = {
+    recording: el('navRecording'),
+    integrations: el('navIntegrations'),
+    ai: el('navAI')
+  };
+
+  Object.entries(pages).forEach(([key, node]) => {
+    node.classList.toggle('hidden', key !== activePage);
+  });
+
+  Object.entries(nav).forEach(([key, node]) => {
+    if (key === activePage) {
+      node.className = 'w-full text-left px-3 py-2 rounded-lg text-sm border border-line bg-slate-800/80 text-slate-100';
+    } else {
+      node.className = 'w-full text-left px-3 py-2 rounded-lg text-sm border border-line bg-transparent text-slate-300 hover:bg-slate-800/60 transition';
+    }
+  });
 }
 
 async function loadRecordings() {
   if (!window.electronAPI) return;
-  
+
   try {
     const recordings = await window.electronAPI.getRecordings(20);
     const list = el('recordingsList');
-    
+
     if (!recordings || recordings.length === 0) {
       list.innerHTML = '<p class="text-sm text-slate-400">No recordings yet</p>';
       return;
     }
-    
-    list.innerHTML = recordings.map(rec => `
+
+    list.innerHTML = recordings.map((rec) => `
       <div class="flex items-center justify-between px-3 py-2 rounded-lg border border-line bg-ink/40">
         <div>
           <p class="text-sm font-medium">${rec.filename || 'Recording'}</p>
@@ -262,10 +326,10 @@ async function sendChatMessage() {
   const input = el('chatInput');
   const message = input.value.trim();
   if (!message) return;
-  
+
   addChatMessage('user', message);
   input.value = '';
-  
+
   if (!window.electronAPI) {
     addChatMessage('assistant', 'Electron bridge not available');
     return;
@@ -279,13 +343,13 @@ async function sendChatMessage() {
       addChatMessage('assistant', response?.error || 'Failed to get response');
     }
   } catch (e) {
-    addChatMessage('assistant', 'Error: ' + (e.message || 'Unknown error'));
+    addChatMessage('assistant', `Error: ${e.message || 'Unknown error'}`);
   }
 }
 
 async function processRecording(recordingId, audioPath, notionParentPageId = null) {
   if (!window.electronAPI) return null;
-  
+
   try {
     const result = await window.electronAPI.processRecording({
       recordingId,
@@ -303,22 +367,29 @@ async function initializeRenderer() {
   el('recordBtn').addEventListener('click', toggleRecording);
   el('autoToggle').addEventListener('click', toggleAutoRecord);
 
+  el('navRecording').addEventListener('click', () => setActivePage('recording'));
+  el('navIntegrations').addEventListener('click', () => setActivePage('integrations'));
+  el('navAI').addEventListener('click', () => setActivePage('ai'));
+
   el('notionToggle').addEventListener('click', () => toggleIntegration('notion'));
   el('geminiToggle').addEventListener('click', () => toggleIntegration('gemini'));
-  el('whisperMode').addEventListener('change', saveIntegrations);
-  el('notionKey').addEventListener('input', saveIntegrations);
-  el('geminiKey').addEventListener('input', saveIntegrations);
-  el('whisperKey').addEventListener('input', saveIntegrations);
+  el('saveIntegrationsBtn').addEventListener('click', saveIntegrations);
 
-  loadIntegrations();
-  loadRecordings();
+  el('whisperMode').addEventListener('change', () => setIntegrationStatus('Unsaved changes'));
+  el('notionKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
+  el('geminiKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
+  el('whisperKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
 
   el('chatSend').addEventListener('click', sendChatMessage);
   el('chatInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendChatMessage();
   });
 
+  setActivePage('recording');
   updateStatusUI();
+
+  await loadIntegrations();
+  await loadRecordings();
 
   if (!window.electronAPI) {
     setBackendMessage('Running in preview mode');
