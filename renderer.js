@@ -4,7 +4,7 @@ let timerInterval = null;
 let elapsedSeconds = 0;
 
 let integrations = {
-  notion: { enabled: false, apiKey: '' },
+  notion: { enabled: false, apiKey: '', parentPageId: '' },
   gemini: { enabled: false, apiKey: '' },
   whisper: { mode: 'local', apiKey: '' }
 };
@@ -195,7 +195,11 @@ function toggleIntegration(name) {
 
 function collectIntegrationSettings() {
   return {
-    notion: { enabled: integrations.notion.enabled, apiKey: el('notionKey').value.trim() },
+    notion: {
+      enabled: integrations.notion.enabled,
+      apiKey: el('notionKey').value.trim(),
+      parentPageId: el('notionParentPageId').value.trim()
+    },
     gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value.trim() },
     whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value.trim() }
   };
@@ -235,8 +239,10 @@ async function loadIntegrations() {
       integrations.notion.enabled = !!settings.notion?.enabled;
       integrations.gemini.enabled = !!settings.gemini?.enabled;
       integrations.whisper.mode = settings.whisper?.mode || 'local';
+      integrations.notion.parentPageId = settings.notion?.parentPageId || '';
 
       el('notionKey').value = settings.notion?.apiKey || '';
+      el('notionParentPageId').value = settings.notion?.parentPageId || '';
       el('geminiKey').value = settings.gemini?.apiKey || '';
       el('whisperMode').value = settings.whisper?.mode || 'local';
       el('whisperKey').value = settings.whisper?.apiKey || '';
@@ -244,8 +250,10 @@ async function loadIntegrations() {
       integrations.notion.enabled = Boolean(Number(settings.notion_enabled || 0));
       integrations.gemini.enabled = Boolean(Number(settings.gemini_enabled || 0));
       integrations.whisper.mode = settings.whisper_mode || 'local';
+      integrations.notion.parentPageId = settings.notion_parent_page_id || '';
 
       el('notionKey').value = settings.notion_api_key || '';
+      el('notionParentPageId').value = settings.notion_parent_page_id || '';
       el('geminiKey').value = settings.gemini_api_key || '';
       el('whisperMode').value = settings.whisper_mode || 'local';
       el('whisperKey').value = settings.whisper_api_key || '';
@@ -377,6 +385,7 @@ async function initializeRenderer() {
 
   el('whisperMode').addEventListener('change', () => setIntegrationStatus('Unsaved changes'));
   el('notionKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
+  el('notionParentPageId').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
   el('geminiKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
   el('whisperKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
 
