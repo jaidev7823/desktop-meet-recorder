@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
   saveIntegrations: (settings) => ipcRenderer.invoke('save-integrations', settings),
   loadIntegrations: () => ipcRenderer.invoke('load-integrations'),
+  connectNotionOAuth: (data) => ipcRenderer.invoke('connect-notion-oauth', data),
   saveRecording: (data) => ipcRenderer.invoke('save-recording', data),
   getRecordings: (limit) => ipcRenderer.invoke('get-recordings', limit),
   transcribeAudio: (data) => ipcRenderer.invoke('transcribe-audio', data),

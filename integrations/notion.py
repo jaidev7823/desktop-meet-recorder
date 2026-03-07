@@ -1,5 +1,7 @@
+import base64
+from typing import Any, Dict, Optional
+
 import httpx
-from typing import Optional, Dict, Any
 
 
 class NotionClient:
@@ -82,15 +84,94 @@ class NotionClient:
 
 
 def create_notion_page(
-    api_key: str,
-    parent_page_id: str,
+    access_token: str,
+    parent_page_id: Optional[str],
     title: str,
     content: str,
 ) -> Optional[str]:
-    if not api_key or not parent_page_id:
+    if not access_token:
         return None
-    client = NotionClient(api_key)
+    resolved_parent_id = parent_page_id or get_first_accessible_page_id(access_token)
+    if not resolved_parent_id:
+        return None
+
+    client = NotionClient(access_token)
     try:
-        return client.create_page(parent_page_id, title, content)
+        return client.create_page(resolved_parent_id, title, content)
     finally:
         client.close()
+
+
+def exchange_oauth_code(
+    client_id: str, client_secret: str, code: str, redirect_uri: str
+) -> Optional[Dict[str, Any]]:
+    if not client_id or not client_secret or not code or not redirect_uri:
+        return None
+
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode(
+        "utf-8"
+    )
+    headers = {
+        "Authorization": f"Basic {basic}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }
+
+    try:
+        with httpx.Client(timeout=20) as client:
+            response = client.post(
+                "https://api.notion.com/v1/oauth/token",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as e:
+        print(f"Notion OAuth exchange error: {e}")
+        return None
+
+    return {
+        "access_token": data.get("access_token", ""),
+        "workspace_id": data.get("workspace_id", ""),
+        "workspace_name": data.get("workspace_name", ""),
+        "workspace_icon": data.get("workspace_icon", ""),
+        "bot_id": data.get("bot_id", ""),
+    }
+
+
+def get_first_accessible_page_id(access_token: str) -> Optional[str]:
+    if not access_token:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "filter": {"value": "page", "property": "object"},
+        "page_size": 10,
+        "sort": {"direction": "descending", "timestamp": "last_edited_time"},
+    }
+
+    try:
+        with httpx.Client(timeout=20) as client:
+            response = client.post(
+                "https://api.notion.com/v1/search",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as e:
+        print(f"Notion search error: {e}")
+        return None
+
+    for item in data.get("results", []):
+        if item.get("object") == "page" and item.get("id"):
+            return item["id"]
+    return None

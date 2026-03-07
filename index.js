@@ -1,6 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const readline = require('readline');
 
@@ -212,6 +214,105 @@ function getConfigPath() {
   return path.join(app.getPath('userData'), 'integrations.json');
 }
 
+function startNotionOAuthServer(expectedState, timeoutMs = 180000) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer();
+    let settled = false;
+    let timeoutId = null;
+    let resolveCode;
+    let rejectCode;
+
+    const waitForCode = new Promise((innerResolve, innerReject) => {
+      resolveCode = innerResolve;
+      rejectCode = innerReject;
+    });
+
+    function cleanup() {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (server.listening) {
+        try {
+          server.close();
+        } catch (_) {
+          // no-op
+        }
+      }
+    }
+
+    function completeError(message, res) {
+      if (res && !res.headersSent) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end(`${message}. You can close this tab.`);
+      }
+      if (settled) return;
+      settled = true;
+      cleanup();
+      rejectCode(new Error(message));
+    }
+
+    server.on('request', (req, res) => {
+      const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      if (requestUrl.pathname !== '/notion/oauth/callback') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
+        return;
+      }
+
+      const code = requestUrl.searchParams.get('code');
+      const state = requestUrl.searchParams.get('state');
+      const error = requestUrl.searchParams.get('error');
+
+      if (error) {
+        completeError(`Notion OAuth error: ${error}`, res);
+        return;
+      }
+      if (!code || state !== expectedState) {
+        completeError('Invalid Notion OAuth callback state', res);
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('Notion connected. You can close this tab and return to the app.');
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolveCode({ code });
+    });
+
+    server.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      rejectCode(error);
+      reject(error);
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address !== 'object') {
+        cleanup();
+        reject(new Error('Failed to start local OAuth callback server'));
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectCode(new Error('Notion OAuth callback timed out'));
+      }, timeoutMs);
+
+      resolve({
+        port: address.port,
+        waitForCode,
+        close: cleanup,
+      });
+    });
+  });
+}
+
 ipcMain.handle('save-integrations', async (_, settings) => {
   try {
     const response = await sendCommandToPython('save_integrations', { data: settings });
@@ -235,6 +336,60 @@ ipcMain.handle('load-integrations', async () => {
     console.error('Failed to load integrations:', error);
   }
   return null;
+});
+
+ipcMain.handle('connect-notion-oauth', async (_, data) => {
+  const clientId = (data?.clientId || '').trim();
+  const clientSecret = (data?.clientSecret || '').trim();
+  const parentPageId = (data?.parentPageId || '').trim();
+  if (!clientId || !clientSecret) {
+    return { error: 'Notion OAuth client ID and client secret are required' };
+  }
+
+  const state = crypto.randomBytes(16).toString('hex');
+  let oauthServer;
+  let redirectUri;
+
+  try {
+    oauthServer = await startNotionOAuthServer(state);
+    redirectUri = `http://127.0.0.1:${oauthServer.port}/notion/oauth/callback`;
+
+    const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
+    authUrl.searchParams.set('owner', 'user');
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('state', state);
+
+    await shell.openExternal(authUrl.toString());
+    const callbackPayload = await oauthServer.waitForCode;
+
+    const response = await sendCommandToPython(
+      'connect_notion_oauth',
+      {
+        data: {
+          code: callbackPayload.code,
+          clientId,
+          clientSecret,
+          redirectUri,
+          parentPageId,
+        },
+      },
+      45000,
+    );
+
+    if (!response.ok) {
+      return { error: response.error || 'Failed to connect Notion OAuth' };
+    }
+    return response.data || { connected: true };
+  } catch (error) {
+    console.error('Failed to connect Notion OAuth:', error);
+    return { error: error.message || 'Failed to connect Notion OAuth' };
+  } finally {
+    if (oauthServer && typeof oauthServer.close === 'function') {
+      oauthServer.close();
+    }
+  }
 });
 
 ipcMain.handle('save-recording', async (_, data) => {

@@ -27,7 +27,9 @@ except Exception as e:
 try:
     from integrations import (
         create_notion_page,
+        exchange_oauth_code,
         generate_summary_gemini,
+        get_first_accessible_page_id,
         chat_with_gemini,
         transcribe_audio,
     )
@@ -37,6 +39,8 @@ except Exception as e:
     print("Integrations import failed:", e)
     INTEGRATIONS_AVAILABLE = False
     create_notion_page = None
+    exchange_oauth_code = None
+    get_first_accessible_page_id = None
     generate_summary_gemini = None
     chat_with_gemini = None
     transcribe_audio = None
@@ -296,15 +300,69 @@ def command_loop():
                 ) or data.get("notion", {}).get("notionId", "")
                 save_integrations(
                     notion_enabled=data.get("notion", {}).get("enabled", False),
-                    notion_api_key=data.get("notion", {}).get("apiKey", ""),
+                    notion_api_key=data.get("notion", {}).get("accessToken", ""),
                     notion_parent_page_id=notion_parent_page_id,
-                    notion_id=notion_parent_page_id,
+                    notion_id=data.get("notion", {}).get("workspaceId", ""),
                     gemini_enabled=data.get("gemini", {}).get("enabled", False),
                     gemini_api_key=data.get("gemini", {}).get("apiKey", ""),
                     whisper_mode=data.get("whisper", {}).get("mode", "local"),
                     whisper_api_key=data.get("whisper", {}).get("apiKey", ""),
                 )
                 emit_response(request_id, True)
+                continue
+
+            if (
+                action == "connect_notion_oauth"
+                and exchange_oauth_code
+                and INTEGRATIONS_AVAILABLE
+                and save_integrations
+            ):
+                data = message.get("data", {})
+                code = data.get("code", "")
+                client_id = data.get("clientId", "")
+                client_secret = data.get("clientSecret", "")
+                redirect_uri = data.get("redirectUri", "")
+                preferred_parent_page_id = data.get("parentPageId", "")
+
+                oauth_data = exchange_oauth_code(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    code=code,
+                    redirect_uri=redirect_uri,
+                )
+                if not oauth_data or not oauth_data.get("access_token"):
+                    emit_response(request_id, False, error="Notion OAuth exchange failed")
+                    continue
+
+                integrations_data = get_integrations() if get_integrations else {}
+                access_token = oauth_data.get("access_token", "")
+                resolved_parent_page_id = preferred_parent_page_id
+                if not resolved_parent_page_id and get_first_accessible_page_id:
+                    resolved_parent_page_id = (
+                        get_first_accessible_page_id(access_token) or ""
+                    )
+
+                save_integrations(
+                    notion_enabled=True,
+                    notion_api_key=access_token,
+                    notion_parent_page_id=resolved_parent_page_id,
+                    notion_id=oauth_data.get("workspace_id", ""),
+                    gemini_enabled=bool(integrations_data.get("gemini_enabled")),
+                    gemini_api_key=integrations_data.get("gemini_api_key", ""),
+                    whisper_mode=integrations_data.get("whisper_mode", "local"),
+                    whisper_api_key=integrations_data.get("whisper_api_key", ""),
+                )
+                emit_response(
+                    request_id,
+                    True,
+                    {
+                        "accessToken": access_token,
+                        "workspaceName": oauth_data.get("workspace_name", ""),
+                        "workspaceId": oauth_data.get("workspace_id", ""),
+                        "parentPageId": resolved_parent_page_id,
+                        "connected": True,
+                    },
+                )
                 continue
 
             if action == "save_recording" and save_recording:
@@ -427,11 +485,11 @@ def command_loop():
                     integrations_data = get_integrations() if get_integrations else {}
                     parent_page_id = integrations_data.get("notion_parent_page_id", "")
 
-                if not api_key or not parent_page_id:
+                if not api_key:
                     emit_response(
                         request_id,
                         False,
-                        error="Notion API key or parent page ID not configured",
+                        error="Notion OAuth token is missing. Reconnect Notion integration.",
                     )
                     continue
 
@@ -490,24 +548,23 @@ def command_loop():
                     parent_id = data.get("notionParentPageId") or integrations_data.get(
                         "notion_parent_page_id"
                     )
-                    if parent_id:
-                        transcript = results.get("transcript", "")
-                        summary = results.get("summary", "")
-                        content = (
-                            f"Summary:\n{summary}\n\nTranscript:\n{transcript}"
-                            if summary
-                            else transcript
-                        )
-                        page_id = create_notion_page(
-                            integrations_data["notion_api_key"],
-                            parent_id,
-                            f"Meeting Recording {recording_id}",
-                            content,
-                        )
-                        if page_id:
-                            results["notionPageId"] = page_id
-                            if update_recording:
-                                update_recording(recording_id, notion_page_id=page_id)
+                    transcript = results.get("transcript", "")
+                    summary = results.get("summary", "")
+                    content = (
+                        f"Summary:\n{summary}\n\nTranscript:\n{transcript}"
+                        if summary
+                        else transcript
+                    )
+                    page_id = create_notion_page(
+                        integrations_data["notion_api_key"],
+                        parent_id,
+                        f"Meeting Recording {recording_id}",
+                        content,
+                    )
+                    if page_id:
+                        results["notionPageId"] = page_id
+                        if update_recording:
+                            update_recording(recording_id, notion_page_id=page_id)
 
                 emit_response(request_id, True, results)
                 continue

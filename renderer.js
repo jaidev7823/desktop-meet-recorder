@@ -4,7 +4,13 @@ let timerInterval = null;
 let elapsedSeconds = 0;
 
 let integrations = {
-  notion: { enabled: false, apiKey: '', parentPageId: '' },
+  notion: {
+    enabled: false,
+    accessToken: '',
+    workspaceId: '',
+    workspaceName: '',
+    parentPageId: '',
+  },
   gemini: { enabled: false, apiKey: '' },
   whisper: { mode: 'local', apiKey: '' }
 };
@@ -193,13 +199,28 @@ function toggleIntegration(name) {
   setIntegrationStatus('Unsaved changes');
 }
 
+function updateNotionConnectionInfo() {
+  const target = el('notionConnectionInfo');
+  if (!target) return;
+
+  if (!integrations.notion.accessToken) {
+    target.textContent = 'Not connected';
+    target.className = 'mt-2 text-xs text-amber-300';
+    return;
+  }
+
+  const workspaceLabel = integrations.notion.workspaceName || integrations.notion.workspaceId || 'Connected workspace';
+  target.textContent = `Connected: ${workspaceLabel}`;
+  target.className = 'mt-2 text-xs text-emerald-300';
+}
+
 function collectIntegrationSettings() {
   return {
     notion: {
       enabled: integrations.notion.enabled,
-      apiKey: el('notionKey').value.trim(),
+      accessToken: integrations.notion.accessToken,
+      workspaceId: integrations.notion.workspaceId,
       parentPageId: el('notionParentPageId').value.trim(),
-      notionId: el('notionParentPageId').value.trim()
     },
     gemini: { enabled: integrations.gemini.enabled, apiKey: el('geminiKey').value.trim() },
     whisper: { mode: el('whisperMode').value, apiKey: el('whisperKey').value.trim() }
@@ -219,12 +240,52 @@ async function saveIntegrations() {
     if (!ok) {
       throw new Error('Backend save returned false');
     }
-    setIntegrationStatus('Integration keys saved to database');
+    setIntegrationStatus('Integration settings saved to database');
     return true;
   } catch (e) {
     setIntegrationStatus(`Save failed: ${e.message || 'Unknown error'}`, true);
     return false;
   }
+}
+
+async function connectNotionOAuth() {
+  if (!window.electronAPI) {
+    setIntegrationStatus('Electron bridge not available', true);
+    return;
+  }
+
+  const clientId = el('notionClientId').value.trim();
+  const clientSecret = el('notionClientSecret').value.trim();
+  const parentPageId = el('notionParentPageId').value.trim();
+
+  if (!clientId || !clientSecret) {
+    setIntegrationStatus('Enter Notion OAuth client ID and client secret', true);
+    return;
+  }
+
+  setIntegrationStatus('Opening Notion authorization in browser...');
+  const response = await window.electronAPI.connectNotionOAuth({
+    clientId,
+    clientSecret,
+    parentPageId,
+  });
+
+  if (!response || response.error) {
+    setIntegrationStatus(response?.error || 'Failed to connect Notion OAuth', true);
+    return;
+  }
+
+  integrations.notion.accessToken = response.accessToken || '';
+  integrations.notion.workspaceName = response.workspaceName || '';
+  integrations.notion.workspaceId = response.workspaceId || '';
+  if (response.parentPageId) {
+    integrations.notion.parentPageId = response.parentPageId;
+    el('notionParentPageId').value = response.parentPageId;
+  }
+  integrations.notion.enabled = true;
+  updateToggle('notionToggle', true);
+  updateNotionConnectionInfo();
+  setIntegrationStatus('Notion connected. Click Save Integrations to persist enable/disable state.');
 }
 
 async function loadIntegrations() {
@@ -240,9 +301,11 @@ async function loadIntegrations() {
       integrations.notion.enabled = !!settings.notion?.enabled;
       integrations.gemini.enabled = !!settings.gemini?.enabled;
       integrations.whisper.mode = settings.whisper?.mode || 'local';
+      integrations.notion.accessToken = settings.notion?.accessToken || '';
+      integrations.notion.workspaceId = settings.notion?.workspaceId || '';
+      integrations.notion.workspaceName = settings.notion?.workspaceName || '';
       integrations.notion.parentPageId = settings.notion?.parentPageId || '';
 
-      el('notionKey').value = settings.notion?.apiKey || '';
       el('notionParentPageId').value = settings.notion?.parentPageId || '';
       el('geminiKey').value = settings.gemini?.apiKey || '';
       el('whisperMode').value = settings.whisper?.mode || 'local';
@@ -251,9 +314,10 @@ async function loadIntegrations() {
       integrations.notion.enabled = Boolean(Number(settings.notion_enabled || 0));
       integrations.gemini.enabled = Boolean(Number(settings.gemini_enabled || 0));
       integrations.whisper.mode = settings.whisper_mode || 'local';
+      integrations.notion.accessToken = settings.notion_api_key || '';
+      integrations.notion.workspaceId = settings.notion_id || '';
       integrations.notion.parentPageId = settings.notion_parent_page_id || '';
 
-      el('notionKey').value = settings.notion_api_key || '';
       el('notionParentPageId').value = settings.notion_parent_page_id || '';
       el('geminiKey').value = settings.gemini_api_key || '';
       el('whisperMode').value = settings.whisper_mode || 'local';
@@ -262,6 +326,7 @@ async function loadIntegrations() {
 
     updateToggle('notionToggle', integrations.notion.enabled);
     updateToggle('geminiToggle', integrations.gemini.enabled);
+    updateNotionConnectionInfo();
     setIntegrationStatus('Loaded saved integration settings');
   } catch (e) {
     setIntegrationStatus(`Could not load settings: ${e.message || 'Unknown error'}`, true);
@@ -382,10 +447,12 @@ async function initializeRenderer() {
 
   el('notionToggle').addEventListener('click', () => toggleIntegration('notion'));
   el('geminiToggle').addEventListener('click', () => toggleIntegration('gemini'));
+  el('notionConnectBtn').addEventListener('click', connectNotionOAuth);
   el('saveIntegrationsBtn').addEventListener('click', saveIntegrations);
 
   el('whisperMode').addEventListener('change', () => setIntegrationStatus('Unsaved changes'));
-  el('notionKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
+  el('notionClientId').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
+  el('notionClientSecret').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
   el('notionParentPageId').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
   el('geminiKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
   el('whisperKey').addEventListener('input', () => setIntegrationStatus('Unsaved changes'));
