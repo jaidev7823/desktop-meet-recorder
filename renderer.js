@@ -223,6 +223,32 @@ function loadIntegrations() {
   }
 }
 
+async function loadRecordings() {
+  if (!window.electronAPI) return;
+  
+  try {
+    const recordings = await window.electronAPI.getRecordings(20);
+    const list = el('recordingsList');
+    
+    if (!recordings || recordings.length === 0) {
+      list.innerHTML = '<p class="text-sm text-slate-400">No recordings yet</p>';
+      return;
+    }
+    
+    list.innerHTML = recordings.map(rec => `
+      <div class="flex items-center justify-between px-3 py-2 rounded-lg border border-line bg-ink/40">
+        <div>
+          <p class="text-sm font-medium">${rec.filename || 'Recording'}</p>
+          <p class="text-xs text-slate-400">${new Date(rec.created_at).toLocaleString()}</p>
+        </div>
+        <span class="text-xs text-slate-400">${rec.duration_seconds || 0}s</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.log('Could not load recordings:', e);
+  }
+}
+
 async function initializeRenderer() {
   el('recordBtn').addEventListener('click', toggleRecording);
   el('autoToggle').addEventListener('click', toggleAutoRecord);
@@ -235,6 +261,7 @@ async function initializeRenderer() {
   el('whisperKey').addEventListener('input', saveIntegrations);
 
   loadIntegrations();
+  loadRecordings();
 
   updateStatusUI();
 
