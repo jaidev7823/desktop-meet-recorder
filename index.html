@@ -140,6 +140,19 @@
         </div>
       </section>
 
+      <section class="px-6 pb-6">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-[0.18em]">Assistant</h2>
+        <div class="rounded-xl border border-line bg-ink/60 p-4">
+          <div id="chatMessages" class="h-32 overflow-y-auto space-y-2 mb-3 text-sm">
+            <p class="text-slate-400">Ask about your recordings</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="chatInput" placeholder="Ask Gemini..." class="flex-1 bg-slate-900 border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-calm/70" />
+            <button id="chatSend" class="px-4 py-2 rounded-lg bg-calm hover:bg-sky-400 text-slate-900 text-sm font-medium transition">Send</button>
+          </div>
+        </div>
+      </section>
+
       <footer class="px-6 py-3 border-t border-line flex items-center justify-between text-xs text-slate-400 font-mono">
         <span id="ffmpegStatus">ffmpeg pending</span>
         <span>v0.2.0</span>

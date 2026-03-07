@@ -249,6 +249,26 @@ async function loadRecordings() {
   }
 }
 
+function addChatMessage(role, content) {
+  const container = el('chatMessages');
+  const div = document.createElement('div');
+  div.className = role === 'user' ? 'text-slate-200' : 'text-slate-400';
+  div.textContent = `${role === 'user' ? 'You' : 'Assistant'}: ${content}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const input = el('chatInput');
+  const message = input.value.trim();
+  if (!message) return;
+  
+  addChatMessage('user', message);
+  input.value = '';
+  
+  addChatMessage('assistant', 'Processing... (Gemini integration coming soon)');
+}
+
 async function initializeRenderer() {
   el('recordBtn').addEventListener('click', toggleRecording);
   el('autoToggle').addEventListener('click', toggleAutoRecord);
@@ -262,6 +282,11 @@ async function initializeRenderer() {
 
   loadIntegrations();
   loadRecordings();
+
+  el('chatSend').addEventListener('click', sendChatMessage);
+  el('chatInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendChatMessage();
+  });
 
   updateStatusUI();
 
