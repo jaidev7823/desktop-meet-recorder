@@ -214,7 +214,7 @@ function getConfigPath() {
   return path.join(app.getPath('userData'), 'integrations.json');
 }
 
-function startNotionOAuthServer(expectedState, timeoutMs = 180000) {
+function startNotionOAuthServer(expectedState, callbackPort = 8765, timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
     const server = http.createServer();
     let settled = false;
@@ -289,7 +289,7 @@ function startNotionOAuthServer(expectedState, timeoutMs = 180000) {
       reject(error);
     });
 
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(callbackPort, '127.0.0.1', () => {
       const address = server.address();
       if (!address || typeof address !== 'object') {
         cleanup();
@@ -347,11 +347,15 @@ ipcMain.handle('connect-notion-oauth', async (_, data) => {
   }
 
   const state = crypto.randomBytes(16).toString('hex');
+  const callbackPort = Number(process.env.NOTION_OAUTH_CALLBACK_PORT || '8765');
+  if (!Number.isInteger(callbackPort) || callbackPort < 1 || callbackPort > 65535) {
+    return { error: 'Invalid NOTION_OAUTH_CALLBACK_PORT value' };
+  }
   let oauthServer;
   let redirectUri;
 
   try {
-    oauthServer = await startNotionOAuthServer(state);
+    oauthServer = await startNotionOAuthServer(state, callbackPort);
     redirectUri = `http://127.0.0.1:${oauthServer.port}/notion/oauth/callback`;
 
     const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
