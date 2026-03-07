@@ -45,6 +45,7 @@ def _init_sqlite_schema():
             id INTEGER PRIMARY KEY CHECK (id = 1),
             notion_enabled INTEGER DEFAULT 0,
             notion_api_key TEXT,
+            notion_parent_page_id TEXT,
             gemini_enabled INTEGER DEFAULT 0,
             gemini_api_key TEXT,
             whisper_mode TEXT DEFAULT 'local',
@@ -63,6 +64,15 @@ def _init_sqlite_schema():
             FOREIGN KEY (recording_id) REFERENCES recordings(id)
         );
     """)
+
+    # Lightweight migration for existing databases created before new columns.
+    existing_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(integrations)").fetchall()
+    }
+    if "notion_parent_page_id" not in existing_columns:
+        conn.execute("ALTER TABLE integrations ADD COLUMN notion_parent_page_id TEXT")
+        conn.commit()
 
 
 def get_lance_db():
@@ -160,6 +170,7 @@ def get_integrations() -> Dict:
 def save_integrations(
     notion_enabled: bool = False,
     notion_api_key: str = "",
+    notion_parent_page_id: str = "",
     gemini_enabled: bool = False,
     gemini_api_key: str = "",
     whisper_mode: str = "local",
@@ -168,7 +179,7 @@ def save_integrations(
     conn = get_sqlite_connection()
     conn.execute(
         """UPDATE integrations SET 
-           notion_enabled = ?, notion_api_key = ?,
+           notion_enabled = ?, notion_api_key = ?, notion_parent_page_id = ?,
            gemini_enabled = ?, gemini_api_key = ?,
            whisper_mode = ?, whisper_api_key = ?,
            updated_at = ?
@@ -176,6 +187,7 @@ def save_integrations(
         (
             int(notion_enabled),
             notion_api_key,
+            notion_parent_page_id,
             int(gemini_enabled),
             gemini_api_key,
             whisper_mode,

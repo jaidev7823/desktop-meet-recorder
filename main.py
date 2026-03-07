@@ -294,6 +294,9 @@ def command_loop():
                 save_integrations(
                     notion_enabled=data.get("notion", {}).get("enabled", False),
                     notion_api_key=data.get("notion", {}).get("apiKey", ""),
+                    notion_parent_page_id=data.get("notion", {}).get(
+                        "parentPageId", ""
+                    ),
                     gemini_enabled=data.get("gemini", {}).get("enabled", False),
                     gemini_api_key=data.get("gemini", {}).get("apiKey", ""),
                     whisper_mode=data.get("whisper", {}).get("mode", "local"),
@@ -418,6 +421,9 @@ def command_loop():
                 if not api_key:
                     integrations_data = get_integrations() if get_integrations else {}
                     api_key = integrations_data.get("notion_api_key", "")
+                if not parent_page_id:
+                    integrations_data = get_integrations() if get_integrations else {}
+                    parent_page_id = integrations_data.get("notion_parent_page_id", "")
 
                 if not api_key or not parent_page_id:
                     emit_response(
@@ -479,7 +485,9 @@ def command_loop():
                     and integrations_data.get("notion_enabled")
                     and integrations_data.get("notion_api_key")
                 ):
-                    parent_id = data.get("notionParentPageId")
+                    parent_id = data.get("notionParentPageId") or integrations_data.get(
+                        "notion_parent_page_id"
+                    )
                     if parent_id:
                         transcript = results.get("transcript", "")
                         summary = results.get("summary", "")
