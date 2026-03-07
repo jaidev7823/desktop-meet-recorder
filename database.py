@@ -146,6 +146,11 @@ def get_chat_history(limit: int = 100) -> List[Dict]:
     return [dict(row) for row in rows]
 
 
+def save_chat_message_db(role: str, content: str, recording_id: Optional[int] = None):
+    """Alias for save_chat_message for clarity."""
+    return save_chat_message(role, content, recording_id)
+
+
 def get_integrations() -> Dict:
     conn = get_sqlite_connection()
     row = conn.execute("SELECT * FROM integrations WHERE id = 1").fetchone()
