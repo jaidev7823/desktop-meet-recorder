@@ -7,10 +7,10 @@ from typing import Dict, List, Optional
 
 import lancedb
 
-DB_DIR = Path.home() / ".notecall"
+DB_DIR = Path.home() / ".briefbridge"
 DB_DIR.mkdir(exist_ok=True)
 
-SQLITE_PATH = DB_DIR / "notecall.db"
+SQLITE_PATH = DB_DIR / "briefbridge.db"
 LANCE_PATH = DB_DIR / "lancedb"
 
 _conn = None
