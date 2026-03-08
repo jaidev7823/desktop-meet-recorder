@@ -10,3 +10,4 @@ google-generativeai
 openai
 httpx
 pydub
+faster_whisper
