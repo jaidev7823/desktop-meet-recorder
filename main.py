@@ -58,7 +58,12 @@ except Exception as exc:
 
 
 try:
-    from obs.controller import start_recording, stop_recording
+    from obs.controller import (
+        start_recording,
+        stop_recording,
+        set_output_directory,
+        get_output_directory,
+    )
 except Exception as exc:
     RECORDING_IMPORT_ERROR = str(exc)
 
@@ -68,11 +73,18 @@ except Exception as exc:
     def stop_recording():
         raise RuntimeError(f"Recording backend unavailable: {RECORDING_IMPORT_ERROR}")
 
+    def set_output_directory(_output_dir: str):
+        return None
+
+    def get_output_directory():
+        return ""
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ffmpeg", default="ffmpeg", help="Path to ffmpeg executable")
 parser.add_argument("--mic", default="Microphone (Audio Array AM-C1 Device)")
 parser.add_argument("--stereo", default="Stereo Mix (Realtek(R) Audio)")
+parser.add_argument("--output-dir", default="", help="Recording output directory")
 args = parser.parse_args()
 
 state_lock = threading.Lock()
@@ -88,6 +100,8 @@ state = {
 os.environ["FFMPEG_PATH"] = args.ffmpeg
 os.environ["MIC_DEVICE"] = args.mic
 os.environ["STEREO_DEVICE"] = args.stereo
+if args.output_dir:
+    set_output_directory(args.output_dir)
 
 running = True
 
@@ -168,9 +182,12 @@ def list_audio_devices(ffmpeg_path: str) -> Dict[str, List[str]]:
         if not stereos:
             stereos = [default_stereo]
 
-        if default_mic not in mics:
+        # Do not force unknown defaults to top, because stale names can break auto-start.
+        if default_mic in mics:
+            mics.remove(default_mic)
             mics.insert(0, default_mic)
-        if default_stereo not in stereos:
+        if default_stereo in stereos:
+            stereos.remove(default_stereo)
             stereos.insert(0, default_stereo)
 
         return {"mics": mics, "stereos": stereos}
@@ -178,24 +195,54 @@ def list_audio_devices(ffmpeg_path: str) -> Dict[str, List[str]]:
         return {"mics": [default_mic], "stereos": [default_stereo]}
 
 
+def ensure_valid_audio_defaults():
+    devices = list_audio_devices(args.ffmpeg)
+    mics = devices.get("mics") or []
+    stereos = devices.get("stereos") or []
+    if mics:
+        os.environ["MIC_DEVICE"] = mics[0]
+    if stereos:
+        os.environ["STEREO_DEVICE"] = stereos[0]
+
+
 def start_if_needed(trigger: str):
     with state_lock:
         if state["recording"]:
             return
-    start_recording()
+    output_file = start_recording()
     with state_lock:
         state["recording"] = True
-    emit("status", {"message": f"Recording started ({trigger})", "level": "info"})
+    payload = {"message": f"Recording started ({trigger})", "level": "info"}
+    if output_file:
+        payload["audioPath"] = output_file
+    emit("status", payload)
 
 
 def stop_if_needed(trigger: str):
     with state_lock:
         if not state["recording"]:
             return
-    stop_recording()
+    saved = stop_recording()
     with state_lock:
         state["recording"] = False
-    emit("status", {"message": f"Recording stopped ({trigger})", "level": "info"})
+    payload = {"message": f"Recording stopped ({trigger})", "level": "info"}
+    if isinstance(saved, dict):
+        filepath = saved.get("filepath", "")
+        filename = saved.get("filename", "")
+        duration = int(saved.get("duration", 0) or 0)
+        if filepath and filename and save_recording:
+            recording_id = save_recording(
+                filename=filename,
+                filepath=filepath,
+                duration_seconds=duration,
+            )
+            payload["savedRecording"] = {
+                "id": recording_id,
+                "filename": filename,
+                "filepath": filepath,
+                "duration_seconds": duration,
+            }
+    emit("status", payload)
 
 
 def detection_loop():
@@ -286,6 +333,27 @@ def command_loop():
             if action == "get_audio_devices":
                 devices = list_audio_devices(args.ffmpeg)
                 emit_response(request_id, True, devices)
+                continue
+
+            if action == "set_output_directory":
+                output_dir = (message.get("outputDir") or "").strip()
+                if not output_dir:
+                    emit_response(request_id, False, error="Output directory is required")
+                    continue
+                set_output_directory(output_dir)
+                emit_response(
+                    request_id,
+                    True,
+                    {"outputDir": get_output_directory()},
+                )
+                continue
+
+            if action == "get_output_directory":
+                emit_response(
+                    request_id,
+                    True,
+                    {"outputDir": get_output_directory()},
+                )
                 continue
 
             if action == "get_integrations" and get_integrations:
@@ -584,6 +652,11 @@ def main():
             init_databases()
         except Exception as e:
             emit("error", {"message": f"Database init error: {e}"})
+
+    try:
+        ensure_valid_audio_defaults()
+    except Exception as e:
+        emit("error", {"message": f"Audio device initialization error: {e}"})
 
     emit("status", {"message": "Python monitoring started", "level": "info"})
     if DETECTION_IMPORT_ERROR:

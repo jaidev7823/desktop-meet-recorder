@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -103,10 +103,16 @@ function startPythonDetector() {
   const python = getPythonCommand();
   const scriptPath = getPythonScriptPath();
   const ffmpegPath = getFFmpegPath();
+  const { outputDir } = loadRecordingConfig();
+  fs.mkdirSync(outputDir, { recursive: true });
 
-  pythonProcess = spawn(python, ['-u', scriptPath, '--ffmpeg', ffmpegPath], {
+  pythonProcess = spawn(
+    python,
+    ['-u', scriptPath, '--ffmpeg', ffmpegPath, '--output-dir', outputDir],
+    {
     stdio: ['pipe', 'pipe', 'pipe'],
-  });
+    },
+  );
 
   const stdoutReader = readline.createInterface({ input: pythonProcess.stdout });
   stdoutReader.on('line', parsePythonMessage);
@@ -210,8 +216,85 @@ ipcMain.handle('get-audio-devices', async () => {
   return fallbackDevices;
 });
 
+ipcMain.handle('select-output-directory', async () => {
+  const current = loadRecordingConfig().outputDir;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select recordings folder',
+    defaultPath: current,
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+ipcMain.handle('set-output-directory', async (_, outputDir) => {
+  const normalized = (outputDir || '').trim();
+  if (!normalized) {
+    return null;
+  }
+  fs.mkdirSync(normalized, { recursive: true });
+  saveRecordingConfig({ outputDir: normalized });
+  try {
+    const response = await sendCommandToPython('set_output_directory', { outputDir: normalized });
+    if (response.ok && response.data && response.data.outputDir) {
+      return response.data.outputDir;
+    }
+  } catch (_) {
+    // backend may not be ready yet
+  }
+  return normalized;
+});
+
+ipcMain.handle('get-output-directory', async () => {
+  try {
+    const response = await sendCommandToPython('get_output_directory');
+    if (response.ok && response.data && response.data.outputDir) {
+      return response.data.outputDir;
+    }
+  } catch (_) {
+    // Fall back to local persisted config.
+  }
+  return loadRecordingConfig().outputDir;
+});
+
+ipcMain.handle('open-output-directory', async () => {
+  const target = loadRecordingConfig().outputDir;
+  fs.mkdirSync(target, { recursive: true });
+  const error = await shell.openPath(target);
+  return !error;
+});
+
 function getConfigPath() {
   return path.join(app.getPath('userData'), 'integrations.json');
+}
+
+function getRecordingConfigPath() {
+  return path.join(app.getPath('userData'), 'recording-config.json');
+}
+
+function getDefaultOutputDir() {
+  return path.join(app.getPath('documents'), 'BriefBridgeRecordings');
+}
+
+function loadRecordingConfig() {
+  const configPath = getRecordingConfigPath();
+  if (!fs.existsSync(configPath)) {
+    return { outputDir: getDefaultOutputDir() };
+  }
+  try {
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const data = JSON.parse(raw);
+    return { outputDir: data.outputDir || getDefaultOutputDir() };
+  } catch (_) {
+    return { outputDir: getDefaultOutputDir() };
+  }
+}
+
+function saveRecordingConfig(config) {
+  const configPath = getRecordingConfigPath();
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
 }
 
 function startNotionOAuthServer(expectedState, callbackPort = 8765, timeoutMs = 180000) {

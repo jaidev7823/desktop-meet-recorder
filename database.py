@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -13,21 +14,29 @@ DB_DIR.mkdir(exist_ok=True)
 SQLITE_PATH = DB_DIR / "briefbridge.db"
 LANCE_PATH = DB_DIR / "lancedb"
 
-_conn = None
+_thread_local = threading.local()
+_sqlite_schema_initialized = False
+_sqlite_init_lock = threading.Lock()
 _lance_db = None
 
 
 def get_sqlite_connection() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        _conn = sqlite3.connect(SQLITE_PATH)
-        _conn.row_factory = sqlite3.Row
-        _init_sqlite_schema()
-    return _conn
+    global _sqlite_schema_initialized
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(SQLITE_PATH)
+        conn.row_factory = sqlite3.Row
+        _thread_local.conn = conn
+
+    if not _sqlite_schema_initialized:
+        with _sqlite_init_lock:
+            if not _sqlite_schema_initialized:
+                _init_sqlite_schema(conn)
+                _sqlite_schema_initialized = True
+    return conn
 
 
-def _init_sqlite_schema():
-    conn = get_sqlite_connection()
+def _init_sqlite_schema(conn: sqlite3.Connection):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS recordings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

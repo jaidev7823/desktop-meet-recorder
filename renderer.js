@@ -141,9 +141,56 @@ async function toggleRecording() {
       await window.electronAPI.stopRecording();
       syncRecordingState(false);
       setBackendMessage('Manual recording stopped');
+      await loadRecordings();
     }
   } catch (error) {
     setBackendMessage(error.message || 'Failed to change recording state', true);
+  }
+}
+
+function setOutputDirectoryUI(pathValue) {
+  const target = el('outputDirPath');
+  target.textContent = pathValue || 'Not configured';
+}
+
+async function initializeOutputDirectory() {
+  if (!window.electronAPI) {
+    setOutputDirectoryUI('Unavailable in preview mode');
+    return;
+  }
+  try {
+    const current = await window.electronAPI.getOutputDirectory();
+    setOutputDirectoryUI(current || 'Not configured');
+  } catch (error) {
+    setOutputDirectoryUI('Could not load output folder');
+    setBackendMessage(error.message || 'Failed to load output folder', true);
+  }
+}
+
+async function chooseOutputDirectory() {
+  if (!window.electronAPI) return;
+  try {
+    const selected = await window.electronAPI.selectOutputDirectory();
+    if (!selected) return;
+    const resolved = await window.electronAPI.setOutputDirectory(selected);
+    if (resolved) {
+      setOutputDirectoryUI(resolved);
+      setBackendMessage('Recording folder updated');
+    }
+  } catch (error) {
+    setBackendMessage(error.message || 'Failed to set recording folder', true);
+  }
+}
+
+async function openOutputDirectory() {
+  if (!window.electronAPI) return;
+  try {
+    const ok = await window.electronAPI.openOutputDirectory();
+    if (!ok) {
+      setBackendMessage('Could not open recording folder', true);
+    }
+  } catch (error) {
+    setBackendMessage(error.message || 'Could not open recording folder', true);
   }
 }
 
@@ -440,6 +487,8 @@ async function processRecording(recordingId, audioPath, notionParentPageId = nul
 async function initializeRenderer() {
   el('recordBtn').addEventListener('click', toggleRecording);
   el('autoToggle').addEventListener('click', toggleAutoRecord);
+  el('chooseOutputDirBtn').addEventListener('click', chooseOutputDirectory);
+  el('openOutputDirBtn').addEventListener('click', openOutputDirectory);
 
   el('navRecording').addEventListener('click', () => setActivePage('recording'));
   el('navIntegrations').addEventListener('click', () => setActivePage('integrations'));
@@ -483,6 +532,9 @@ async function initializeRenderer() {
     if (status && status.message) {
       setBackendMessage(status.message, status.level === 'error');
     }
+    if (status && status.savedRecording) {
+      loadRecordings();
+    }
   });
 
   window.electronAPI.onBackendError((status) => {
@@ -497,6 +549,8 @@ async function initializeRenderer() {
   } catch (error) {
     setBackendMessage(error.message || 'Failed to load devices', true);
   }
+
+  await initializeOutputDirectory();
 }
 
 document.addEventListener('DOMContentLoaded', initializeRenderer);
