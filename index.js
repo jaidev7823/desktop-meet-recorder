@@ -210,6 +210,7 @@ ipcMain.handle('set-auto-record', async (_, enabled) => {
 });
 
 ipcMain.handle('get-audio-devices', async () => {
+  console.log('Requesting audio devices from Python backend...');
   try {
     const response = await sendCommandToPython('get_audio_devices', {}, 12000);
 
@@ -217,7 +218,7 @@ ipcMain.handle('get-audio-devices', async () => {
 
       let mics = Array.isArray(response.data.mics) ? response.data.mics : [];
       let stereos = Array.isArray(response.data.stereos) ? response.data.stereos : [];
-
+      console.log('Raw devices from Python:', { mics, stereos });
       // remove invalid device identifiers
       const clean = (list) =>
         list
