@@ -60,23 +60,36 @@ def get_audio_devices():
         lines = result.stderr.splitlines()
 
         devices = []
+
         for line in lines:
             match = re.search(r'"(.*?)"', line)
             if match:
-                devices.append(match.group(1))
+                name = match.group(1)
 
-        mics = []
-        stereos = []
+                # ignore internal device IDs
+                if name.startswith("@device"):
+                    continue
+
+                devices.append(name)
+
+        microphones = []
+        speakers = []
 
         for d in devices:
-            if "Stereo Mix" in d or "What U Hear" in d:
-                stereos.append(d)
+            lower = d.lower()
+
+            if (
+                "stereo mix" in lower
+                or "what u hear" in lower
+                or "loopback" in lower
+            ):
+                speakers.append(d)
             else:
-                mics.append(d)
+                microphones.append(d)
 
         return {
-            "mics": mics,
-            "stereos": stereos
+            "mics": microphones,
+            "stereos": speakers
         }
 
     except Exception as e:
@@ -117,7 +130,6 @@ def start_recording(devices):
 
     output_file = _build_output_file()
     segment_dir = _build_segment_dir(output_file)
-
     segment_pattern = os.path.join(segment_dir, "chunk_%05d.wav")
 
     cmd = [
@@ -134,7 +146,7 @@ def start_recording(devices):
         "-i", f"audio={stereo}",
 
         "-filter_complex",
-        "[1:a][2:a]amix=inputs=2",
+        "[1:a][2:a]amix=inputs=2:duration=longest[aout]",
 
         "-map", "0:v",
         "-map", "[aout]",
@@ -148,6 +160,7 @@ def start_recording(devices):
         "-y",
         output_file,
 
+        "-map", "[aout]",
         "-vn",
         "-ac", "1",
         "-ar", "16000",

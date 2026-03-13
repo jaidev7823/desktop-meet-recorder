@@ -212,12 +212,38 @@ ipcMain.handle('set-auto-record', async (_, enabled) => {
 ipcMain.handle('get-audio-devices', async () => {
   try {
     const response = await sendCommandToPython('get_audio_devices', {}, 12000);
+
     if (response.ok && response.data) {
-      return response.data;
+
+      let mics = Array.isArray(response.data.mics) ? response.data.mics : [];
+      let stereos = Array.isArray(response.data.stereos) ? response.data.stereos : [];
+
+      // remove invalid device identifiers
+      const clean = (list) =>
+        list
+          .filter(Boolean)
+          .filter((d) => typeof d === 'string')
+          .filter((d) => !d.startsWith('@device'));
+
+      mics = clean(mics);
+      stereos = clean(stereos);
+
+      // ensure at least one device exists
+      if (mics.length === 0) {
+        mics = fallbackDevices.mics;
+      }
+
+      if (stereos.length === 0) {
+        stereos = fallbackDevices.stereos;
+      }
+
+      return { mics, stereos };
     }
-  } catch (_) {
-    // Fall back if backend enumeration fails.
+
+  } catch (err) {
+    console.error("Audio device detection failed:", err);
   }
+
   return fallbackDevices;
 });
 
