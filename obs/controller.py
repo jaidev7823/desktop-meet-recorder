@@ -1,127 +1,267 @@
 import subprocess
 import os
 import sys
+import json
+import re
 from datetime import datetime
 
 ffmpeg_process = None
 stopping = False
 current_output_file = None
+current_segment_dir = None
 
-def _tail_ffmpeg_log(max_lines: int = 12):
-    try:
-        with open("ffmpeg_log.txt", "r", encoding="utf-8", errors="ignore") as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
-        if not lines:
-            return ""
-        return " | ".join(lines[-max_lines:])
-    except Exception:
-        return ""
+FFMPEG_PATH = "ffmpeg"
+OUTPUT_DIR = os.getcwd()
+
+
+# -----------------------------
+# Utility
+# -----------------------------
+
+def send_response(request_id, ok=True, data=None, error=None):
+    message = {
+        "type": "response",
+        "requestId": request_id,
+        "ok": ok,
+        "data": data,
+        "error": error
+    }
+    print(json.dumps(message), flush=True)
+
 
 def get_ffmpeg_path():
-    # Will be overridden by Electron passing --ffmpeg argument
-    return os.environ.get("FFMPEG_PATH", "ffmpeg")
+    return FFMPEG_PATH
 
-def get_audio_devices():
-    mic = os.environ.get("MIC_DEVICE", "Microphone (Audio Array AM-C1 Device)")
-    stereo = os.environ.get("STEREO_DEVICE", "Stereo Mix (Realtek(R) Audio)")
-    return mic, stereo
 
 def get_output_directory():
-    output_dir = os.environ.get("OUTPUT_DIR", "").strip()
-    if output_dir:
-        return os.path.abspath(output_dir)
-    return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    return OUTPUT_DIR
 
-def set_output_directory(output_dir: str):
-    if not output_dir:
-        return
-    os.environ["OUTPUT_DIR"] = os.path.abspath(output_dir)
+
+def set_output_directory(path):
+    global OUTPUT_DIR
+    OUTPUT_DIR = os.path.abspath(path)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+# -----------------------------
+# Audio Device Detection
+# -----------------------------
+
+def get_audio_devices():
+    try:
+        result = subprocess.run(
+            [FFMPEG_PATH, "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore"
+        )
+
+        lines = result.stderr.splitlines()
+
+        devices = []
+        for line in lines:
+            match = re.search(r'"(.*?)"', line)
+            if match:
+                devices.append(match.group(1))
+
+        mics = []
+        stereos = []
+
+        for d in devices:
+            if "Stereo Mix" in d or "What U Hear" in d:
+                stereos.append(d)
+            else:
+                mics.append(d)
+
+        return {
+            "mics": mics,
+            "stereos": stereos
+        }
+
+    except Exception as e:
+        return {
+            "mics": [],
+            "stereos": [],
+            "error": str(e)
+        }
+
+
+# -----------------------------
+# Recording
+# -----------------------------
 
 def _build_output_file():
-    output_dir = get_output_directory()
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"recording_{timestamp}.mp4"
-    return os.path.join(output_dir, filename)
+    return os.path.join(OUTPUT_DIR, f"recording_{timestamp}.mp4")
 
-def start_recording():
-    global ffmpeg_process, stopping, current_output_file
-    stopping = False
 
-    mic, stereo = get_audio_devices()
+def _build_segment_dir(output_file):
+    base = os.path.splitext(os.path.basename(output_file))[0]
+    path = os.path.join(OUTPUT_DIR, f"{base}_stt")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def start_recording(devices):
+    global ffmpeg_process, current_output_file, current_segment_dir
+
+    mic = devices.get("mic")
+    stereo = devices.get("stereo")
+
+    if not mic or not stereo:
+        raise RuntimeError("Invalid audio devices")
+
     ffmpeg = get_ffmpeg_path()
+
     output_file = _build_output_file()
-    current_output_file = output_file
+    segment_dir = _build_segment_dir(output_file)
+
+    segment_pattern = os.path.join(segment_dir, "chunk_%05d.wav")
 
     cmd = [
         ffmpeg,
+
         "-f", "gdigrab",
         "-framerate", "30",
-        "-thread_queue_size", "512",
         "-i", "desktop",
+
         "-f", "dshow",
-        "-thread_queue_size", "512",
         "-i", f"audio={mic}",
+
         "-f", "dshow",
-        "-thread_queue_size", "512",
         "-i", f"audio={stereo}",
-        "-filter_complex", "[1:a]volume=1.0[mic];[2:a]volume=3.0[sys];[mic][sys]amix=inputs=2:duration=longest:normalize=0",
+
+        "-filter_complex",
+        "[1:a][2:a]amix=inputs=2",
+
+        "-map", "0:v",
+        "-map", "[aout]",
+
         "-vcodec", "libx264",
         "-preset", "ultrafast",
         "-crf", "23",
+
         "-acodec", "aac",
-        "-vsync", "1",
-        "-async", "1",
+
         "-y",
-        output_file
+        output_file,
+
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-c:a", "pcm_s16le",
+        "-f", "segment",
+        "-segment_time", "20",
+        segment_pattern
     ]
 
-    print(f"Starting FFmpeg recording -> {output_file}")
     ffmpeg_process = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
-        stderr=open("ffmpeg_log.txt", "w"),
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        stderr=subprocess.DEVNULL
     )
 
-    import time
-    time.sleep(2)
-    if ffmpeg_process.poll() is not None:
-        detail = _tail_ffmpeg_log()
-        print("FFmpeg failed to start! Check ffmpeg_log.txt")
-        ffmpeg_process = None
-        current_output_file = None
-        if detail:
-            raise RuntimeError(f"FFmpeg failed to start: {detail}")
-        raise RuntimeError("FFmpeg failed to start")
-    return output_file
+    current_output_file = output_file
+    current_segment_dir = segment_dir
+
+    return {
+        "filepath": output_file,
+        "filename": os.path.basename(output_file),
+        "segment_dir": segment_dir
+    }
+
 
 def stop_recording():
-    global ffmpeg_process, stopping, current_output_file
-    if stopping or not ffmpeg_process:
+    global ffmpeg_process
+
+    if not ffmpeg_process:
         return None
-    stopping = True
-    print("Stopping FFmpeg recording...")
+
     try:
-        ffmpeg_process.stdin.write(b'q\n')
+        ffmpeg_process.stdin.write(b"q\n")
         ffmpeg_process.stdin.flush()
-        ffmpeg_process.stdin.close()
-        ffmpeg_process.wait(timeout=15)
-        print("Recording saved!")
-        if current_output_file and os.path.exists(current_output_file):
-            return {
-                "filepath": os.path.abspath(current_output_file),
-                "filename": os.path.basename(current_output_file),
-                "duration": 0,
-            }
-        return None
-    except Exception as e:
-        print(f"Force killing FFmpeg: {e}")
-        ffmpeg_process.kill()
         ffmpeg_process.wait()
-        return None
-    finally:
-        ffmpeg_process = None
-        stopping = False
-        current_output_file = None
+    except:
+        ffmpeg_process.kill()
+
+    ffmpeg_process = None
+
+    return {
+        "filepath": current_output_file,
+        "filename": os.path.basename(current_output_file),
+        "segment_dir": current_segment_dir
+    }
+
+
+# -----------------------------
+# Electron IPC Loop
+# -----------------------------
+
+def handle_request(msg):
+    action = msg.get("action")
+    request_id = msg.get("requestId")
+
+    try:
+
+        if action == "get_audio_devices":
+            data = get_audio_devices()
+            send_response(request_id, True, data)
+
+        elif action == "start_recording":
+            devices = msg.get("devices", {})
+            data = start_recording(devices)
+            send_response(request_id, True, data)
+
+        elif action == "stop_recording":
+            data = stop_recording()
+            send_response(request_id, True, data)
+
+        elif action == "set_output_directory":
+            set_output_directory(msg.get("outputDir"))
+            send_response(request_id, True, {"outputDir": OUTPUT_DIR})
+
+        elif action == "get_output_directory":
+            send_response(request_id, True, {"outputDir": OUTPUT_DIR})
+
+        else:
+            send_response(request_id, False, error=f"Unknown action: {action}")
+
+    except Exception as e:
+        send_response(request_id, False, error=str(e))
+
+
+# -----------------------------
+# Startup
+# -----------------------------
+
+def parse_args():
+    global FFMPEG_PATH, OUTPUT_DIR
+
+    args = sys.argv
+
+    if "--ffmpeg" in args:
+        FFMPEG_PATH = args[args.index("--ffmpeg") + 1]
+
+    if "--output-dir" in args:
+        OUTPUT_DIR = args[args.index("--output-dir") + 1]
+
+
+def main():
+    parse_args()
+
+    for line in sys.stdin:
+        try:
+            msg = json.loads(line)
+            handle_request(msg)
+        except Exception as e:
+            print(json.dumps({
+                "type": "error",
+                "data": {"message": str(e)}
+            }), flush=True)
+
+
+if __name__ == "__main__":
+    main()

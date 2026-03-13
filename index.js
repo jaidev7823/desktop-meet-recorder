@@ -89,6 +89,11 @@ function parsePythonMessage(rawLine) {
       resolvePending(message.requestId, message);
       return;
     }
+
+    if (message.type === 'transcript') {
+      sendToRenderer('transcript-update', message.data || {});
+      return;
+    }
   } catch (_) {
     // Keep support for legacy plain-text backend logs.
     sendToRenderer('backend-status', { message: line, level: 'info' });

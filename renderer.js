@@ -2,6 +2,7 @@ let recording = false;
 let autoRecord = true;
 let timerInterval = null;
 let elapsedSeconds = 0;
+let liveTranscriptText = '';
 
 let integrations = {
   notion: {
@@ -96,11 +97,32 @@ function syncRecordingState(isRecording) {
 
   recording = isRecording;
   if (recording) {
+    liveTranscriptText = '';
+    updateLiveTranscript({ fullText: '', latestText: '', segmentCount: 0, status: 'starting' });
     startTimer();
   } else {
     stopTimer();
   }
+  if (!recording && !liveTranscriptText.trim()) {
+    updateLiveTranscript({ fullText: '', latestText: '', segmentCount: 0, status: 'idle' });
+  }
   updateStatusUI();
+}
+
+function updateLiveTranscript(data = {}) {
+  const transcriptNode = el('liveTranscript');
+  const metaNode = el('liveTranscriptMeta');
+  liveTranscriptText = (data.fullText || '').trim();
+  transcriptNode.textContent = liveTranscriptText || 'Transcript will appear here during recording.';
+
+  const pieces = [];
+  if (typeof data.segmentCount === 'number') {
+    pieces.push(`${data.segmentCount} chunks`);
+  }
+  if (data.status) {
+    pieces.push(data.status);
+  }
+  metaNode.textContent = pieces.join(' | ') || 'Waiting for segments';
 }
 
 function populateSelect(id, items) {
@@ -121,6 +143,17 @@ function populateSelect(id, items) {
     opt.textContent = name;
     select.appendChild(opt);
   }
+
+  select.selectedIndex = 0;
+}
+
+function selectedDeviceValue(id) {
+  const select = el(id);
+  const value = (select.value || '').trim();
+  if (!value || value === 'Loading...' || value === 'No devices found') {
+    return '';
+  }
+  return value;
 }
 
 async function toggleRecording() {
@@ -129,11 +162,19 @@ async function toggleRecording() {
     return;
   }
 
-  const mic = el('micSelect').value;
-  const stereo = el('stereoSelect').value;
+  const mic = selectedDeviceValue('micSelect');
+  const stereo = selectedDeviceValue('stereoSelect');
 
   try {
     if (!recording) {
+      if (!mic) {
+        setBackendMessage('Select a valid microphone before starting', true);
+        return;
+      }
+      if (!stereo) {
+        setBackendMessage('Select a valid system audio input before starting', true);
+        return;
+      }
       await window.electronAPI.startRecording({ mic, stereo });
       syncRecordingState(true);
       setBackendMessage('Manual recording started');
@@ -541,8 +582,14 @@ async function initializeRenderer() {
     setBackendMessage((status && status.message) || 'Unknown backend error', true);
   });
 
+  window.electronAPI.onTranscriptUpdate((payload) => {
+    updateLiveTranscript(payload || {});
+  });
+
   try {
     const devices = await window.electronAPI.getAudioDevices();
+    console.log('Audio devices loaded:', devices);
+    console.log('Microphones:', devices.mics);
     populateSelect('micSelect', devices.mics || []);
     populateSelect('stereoSelect', devices.stereos || []);
     setBackendMessage('Connected');
@@ -554,3 +601,22 @@ async function initializeRenderer() {
 }
 
 document.addEventListener('DOMContentLoaded', initializeRenderer);
+
+const whisperMode = document.getElementById("whisperMode");
+const whisperKey = document.getElementById("whisperKey");
+const whisperUrl = document.getElementById("whisperUrl");
+
+function updateWhisperInputs() {
+  if (whisperMode.value === "local") {
+    whisperUrl.classList.remove("hidden");
+    whisperKey.classList.add("hidden");
+  } else {
+    whisperKey.classList.remove("hidden");
+    whisperUrl.classList.add("hidden");
+  }
+}
+
+whisperMode.addEventListener("change", updateWhisperInputs);
+
+// run once on load
+updateWhisperInputs();

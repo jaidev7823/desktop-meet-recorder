@@ -1,0 +1,1 @@
+I want live stt with faster-whisper local of call to not put burden on gpu later when call get one hour you know

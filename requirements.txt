@@ -11,3 +11,4 @@ openai
 httpx
 pydub
 faster_whisper
+torch

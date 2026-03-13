@@ -22,4 +22,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDetectionUpdate: (cb) => ipcRenderer.on('detection-update', (_, data) => cb(data)),
   onBackendStatus: (cb) => ipcRenderer.on('backend-status', (_, data) => cb(data)),
   onBackendError: (cb) => ipcRenderer.on('backend-error', (_, data) => cb(data)),
+  onTranscriptUpdate: (cb) => ipcRenderer.on('transcript-update', (_, data) => cb(data)),
 });

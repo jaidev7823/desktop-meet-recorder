@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 try:
     from database import (
@@ -32,6 +32,7 @@ try:
         get_first_accessible_page_id,
         chat_with_gemini,
         transcribe_audio,
+        transcribe_audio_detailed,
     )
 
     INTEGRATIONS_AVAILABLE = True
@@ -44,6 +45,7 @@ except Exception as e:
     generate_summary_gemini = None
     chat_with_gemini = None
     transcribe_audio = None
+    transcribe_audio_detailed = None
 
 DETECTION_IMPORT_ERROR = None
 RECORDING_IMPORT_ERROR = None
@@ -82,8 +84,8 @@ except Exception as exc:
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ffmpeg", default="ffmpeg", help="Path to ffmpeg executable")
-parser.add_argument("--mic", default="Microphone (Audio Array AM-C1 Device)")
-parser.add_argument("--stereo", default="Stereo Mix (Realtek(R) Audio)")
+parser.add_argument("--mic", default="")
+parser.add_argument("--stereo", default="")
 parser.add_argument("--output-dir", default="", help="Recording output directory")
 args = parser.parse_args()
 
@@ -104,6 +106,8 @@ if args.output_dir:
     set_output_directory(args.output_dir)
 
 running = True
+transcription_lock = threading.Lock()
+active_transcription: Optional[Dict[str, Any]] = None
 
 
 def emit(message_type: str, data: Dict):
@@ -122,19 +126,250 @@ def emit_response(request_id: str, ok: bool, data=None, error: str = None):
     sys.stdout.flush()
 
 
+def _default_live_transcript_path(recording_filepath: str) -> str:
+    root, _ = os.path.splitext(recording_filepath)
+    return f"{root}.live_transcript.txt"
+
+
+def _append_live_transcript(session: Dict[str, Any], text: str) -> None:
+    transcript_path = session.get("transcript_path") or _default_live_transcript_path(
+        session["recording_filepath"]
+    )
+    session["transcript_path"] = transcript_path
+    with open(transcript_path, "a", encoding="utf-8") as handle:
+        handle.write(text.strip() + "\n")
+
+
+def _emit_transcript_update(session: Dict[str, Any], latest_text: str) -> None:
+    full_text = "\n".join(session.get("parts", [])).strip()
+    emit(
+        "transcript",
+        {
+            "recordingPath": session.get("recording_filepath", ""),
+            "transcriptPath": session.get("transcript_path", ""),
+            "latestText": latest_text,
+            "fullText": full_text,
+            "segmentCount": len(session.get("processed_files", set())),
+            "status": session.get("status", "running"),
+        },
+    )
+
+
+def _transcription_worker(session: Dict[str, Any]) -> None:
+    grace_seconds = 2.0
+    mode = session.get("mode", "local")
+    api_key = session.get("api_key")
+    model_name = session.get("model_name", "base")
+
+    while True:
+        try:
+            segment_dir = session.get("segment_dir", "")
+            if not segment_dir or not os.path.isdir(segment_dir):
+                if not session.get("active"):
+                    break
+                time.sleep(1)
+                continue
+
+            filenames = sorted(
+                name
+                for name in os.listdir(segment_dir)
+                if name.lower().endswith(".wav")
+            )
+
+            processed_any = False
+            now = time.time()
+            for filename in filenames:
+                segment_path = os.path.join(segment_dir, filename)
+                if segment_path in session["processed_files"]:
+                    continue
+                if session.get("active"):
+                    try:
+                        if now - os.path.getmtime(segment_path) < grace_seconds:
+                            continue
+                    except OSError:
+                        continue
+
+                if not transcribe_audio_detailed:
+                    break
+
+                result = transcribe_audio_detailed(
+                    segment_path,
+                    mode=mode,
+                    api_key=api_key,
+                    model_name=model_name,
+                )
+                session["processed_files"].add(segment_path)
+                if not result or not result.get("transcript"):
+                    continue
+
+                text = result["transcript"].strip()
+                if not text:
+                    continue
+
+                session["parts"].append(text)
+                session["language"] = result.get("language") or session.get("language")
+                session["language_probability"] = result.get(
+                    "language_probability"
+                ) or session.get("language_probability")
+                _append_live_transcript(session, text)
+                session["status"] = "running"
+                _emit_transcript_update(session, text)
+                processed_any = True
+
+            if not session.get("active"):
+                pending = [
+                    name
+                    for name in filenames
+                    if os.path.join(segment_dir, name) not in session["processed_files"]
+                ]
+                if not pending:
+                    break
+
+            if not processed_any:
+                time.sleep(1)
+        except Exception as exc:
+            session["status"] = "error"
+            emit("error", {"message": f"Live transcription error: {exc}"})
+            time.sleep(2)
+
+    session["status"] = "stopped"
+    _emit_transcript_update(session, "")
+
+
+def _start_live_transcription(recording_info: Dict[str, Any]) -> None:
+    global active_transcription
+
+    integrations_data = get_integrations() if get_integrations else {}
+    mode = integrations_data.get("whisper_mode", "local")
+    if mode != "local":
+        return
+
+    recording_filepath = recording_info.get("filepath", "")
+    segment_dir = recording_info.get("segment_dir", "")
+    if not recording_filepath or not segment_dir:
+        return
+
+    session = {
+        "active": True,
+        "status": "starting",
+        "recording_filepath": recording_filepath,
+        "segment_dir": segment_dir,
+        "transcript_path": _default_live_transcript_path(recording_filepath),
+        "parts": [],
+        "processed_files": set(),
+        "mode": mode,
+        "api_key": integrations_data.get("whisper_api_key", "") or None,
+        "model_name": os.getenv("WHISPER_MODEL", "base"),
+        "language": None,
+        "language_probability": None,
+    }
+
+    with transcription_lock:
+        active_transcription = session
+
+    session["thread"] = threading.Thread(
+        target=_transcription_worker,
+        args=(session,),
+        daemon=True,
+    )
+    session["thread"].start()
+
+
+def _stop_live_transcription() -> Optional[Dict[str, Any]]:
+    global active_transcription
+    with transcription_lock:
+        session = active_transcription
+        active_transcription = None
+
+    if not session:
+        return None
+
+    session["active"] = False
+    worker = session.get("thread")
+    if worker and worker.is_alive():
+        worker.join(timeout=30)
+    return session
+
+
 def update_audio_devices(devices: Dict):
     mic = devices.get("mic") if isinstance(devices, dict) else None
     stereo = devices.get("stereo") if isinstance(devices, dict) else None
 
-    if mic:
+    if mic and mic not in {"Loading...", "No devices found"}:
         os.environ["MIC_DEVICE"] = mic
-    if stereo:
+    if stereo and stereo not in {"Loading...", "No devices found"}:
         os.environ["STEREO_DEVICE"] = stereo
+
+
+def _sounddevice_audio_devices() -> Dict[str, List[str]]:
+    try:
+        import sounddevice as sd
+
+        raw_devices = sd.query_devices()
+    except Exception:
+        return {"mics": [], "stereos": []}
+
+    mic_names: List[str] = []
+    stereo_names: List[str] = []
+
+    def add_unique(target: List[str], name: str):
+        normalized = (name or "").strip()
+        if normalized and normalized not in target:
+            target.append(normalized)
+
+    for device in raw_devices:
+        name = str(device.get("name") or "").strip()
+        max_input = int(device.get("max_input_channels") or 0)
+        if max_input <= 0 or not name:
+            continue
+
+        lowered = name.lower()
+        if "stereo mix" in lowered or "loopback" in lowered:
+            add_unique(stereo_names, name)
+            continue
+        if "mapper" in lowered or "primary sound capture driver" in lowered:
+            continue
+        add_unique(mic_names, name)
+
+    if not stereo_names:
+        for device in raw_devices:
+            name = str(device.get("name") or "").strip()
+            max_input = int(device.get("max_input_channels") or 0)
+            if max_input <= 0 or not name:
+                continue
+            lowered = name.lower()
+            if "what u hear" in lowered or "wave out" in lowered:
+                add_unique(stereo_names, name)
+
+    def mic_rank(name: str) -> tuple[int, str]:
+        lowered = name.lower()
+        if "microphone" in lowered or "mic input" in lowered:
+            return (0, lowered)
+        if "headset" in lowered or "hands-free" in lowered:
+            return (2, lowered)
+        return (1, lowered)
+
+    mics_sorted = sorted(mic_names, key=mic_rank)
+    return {"mics": mics_sorted, "stereos": stereo_names}
 
 
 def list_audio_devices(ffmpeg_path: str) -> Dict[str, List[str]]:
     default_mic = os.environ.get("MIC_DEVICE", args.mic)
     default_stereo = os.environ.get("STEREO_DEVICE", args.stereo)
+
+    sounddevice_devices = _sounddevice_audio_devices()
+    if sounddevice_devices["mics"] or sounddevice_devices["stereos"]:
+        mics = sounddevice_devices["mics"]
+        stereos = sounddevice_devices["stereos"]
+
+        if default_mic in mics:
+            mics.remove(default_mic)
+            mics.insert(0, default_mic)
+        if default_stereo in stereos:
+            stereos.remove(default_stereo)
+            stereos.insert(0, default_stereo)
+
+        return {"mics": mics, "stereos": stereos}
 
     if sys.platform != "win32":
         return {"mics": [default_mic], "stereos": [default_stereo]}
@@ -209,12 +444,17 @@ def start_if_needed(trigger: str):
     with state_lock:
         if state["recording"]:
             return
-    output_file = start_recording()
+    recording_info = start_recording()
     with state_lock:
         state["recording"] = True
+    if isinstance(recording_info, dict):
+        _start_live_transcription(recording_info)
     payload = {"message": f"Recording started ({trigger})", "level": "info"}
-    if output_file:
-        payload["audioPath"] = output_file
+    if isinstance(recording_info, dict):
+        payload["audioPath"] = recording_info.get("filepath", "")
+        payload["segmentDir"] = recording_info.get("segment_dir", "")
+    elif recording_info:
+        payload["audioPath"] = recording_info
     emit("status", payload)
 
 
@@ -223,6 +463,7 @@ def stop_if_needed(trigger: str):
         if not state["recording"]:
             return
     saved = stop_recording()
+    live_session = _stop_live_transcription()
     with state_lock:
         state["recording"] = False
     payload = {"message": f"Recording stopped ({trigger})", "level": "info"}
@@ -236,12 +477,26 @@ def stop_if_needed(trigger: str):
                 filepath=filepath,
                 duration_seconds=duration,
             )
+            transcript = ""
+            transcript_path = ""
+            if live_session:
+                transcript = "\n".join(live_session.get("parts", [])).strip()
+                transcript_path = live_session.get("transcript_path", "")
+                if transcript and update_recording:
+                    update_recording(
+                        recording_id,
+                        transcript=transcript,
+                    )
             payload["savedRecording"] = {
                 "id": recording_id,
                 "filename": filename,
                 "filepath": filepath,
                 "duration_seconds": duration,
             }
+            if transcript_path:
+                payload["savedRecording"]["transcript_path"] = transcript_path
+            if transcript:
+                payload["savedRecording"]["transcript_preview"] = transcript[:400]
     emit("status", payload)
 
 
@@ -469,6 +724,24 @@ def command_loop():
                     emit_response(request_id, False, error="Transcription failed")
                 continue
 
+            if action == "get_live_transcript":
+                with transcription_lock:
+                    session = active_transcription
+                    if not session:
+                        emit_response(request_id, True, {"active": False, "transcript": ""})
+                    else:
+                        emit_response(
+                            request_id,
+                            True,
+                            {
+                                "active": True,
+                                "transcript": "\n".join(session.get("parts", [])).strip(),
+                                "transcriptPath": session.get("transcript_path", ""),
+                                "recordingPath": session.get("recording_filepath", ""),
+                            },
+                        )
+                continue
+
             if (
                 action == "summarize_with_gemini"
                 and generate_summary_gemini
@@ -583,8 +856,13 @@ def command_loop():
 
                 integrations_data = get_integrations() if get_integrations else {}
                 results = {"recordingId": recording_id}
+                existing_recording = (
+                    get_recording(recording_id) if recording_id and get_recording else None
+                )
 
-                if transcribe_audio:
+                if existing_recording and existing_recording.get("transcript"):
+                    results["transcript"] = existing_recording["transcript"]
+                elif transcribe_audio:
                     mode = integrations_data.get("whisper_mode", "local")
                     api_key = integrations_data.get("whisper_api_key", "")
                     transcript = transcribe_audio(audio_path, mode, api_key or None)
