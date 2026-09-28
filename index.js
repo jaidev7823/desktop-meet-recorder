@@ -10,17 +10,30 @@ let nextRequestId = 1;
 const pendingRequests = new Map();
 let lastBackendError = '';
 
-const fallbackDevices = {
-  mics: ['Microphone (Audio Array AM-C1 Device)'],
-  stereos: ['Stereo Mix (Realtek(R) Audio)'],
-};
+const fallbackDevices = process.platform === 'win32'
+  ? {
+      mics: ['Microphone (Audio Array AM-C1 Device)'],
+      stereos: ['Stereo Mix (Realtek(R) Audio)'],
+    }
+  : {
+      mics: ['default'],
+      stereos: ['default.monitor'],
+    };
 
 function getFFmpegPath() {
-  const candidate = app.isPackaged
+  const candidateWin = app.isPackaged
     ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
     : path.join(__dirname, 'resources', 'bin', 'ffmpeg.exe');
 
-  return fs.existsSync(candidate) ? candidate : 'ffmpeg';
+  if (fs.existsSync(candidateWin)) return candidateWin;
+
+  // Linux: also check resources/bin/ffmpeg without .exe
+  const candidateLinux = app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'ffmpeg')
+    : path.join(__dirname, 'resources', 'bin', 'ffmpeg');
+  if (fs.existsSync(candidateLinux)) return candidateLinux;
+
+  return 'ffmpeg';
 }
 
 function getPythonScriptPath() {

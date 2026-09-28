@@ -21,20 +21,33 @@ except Exception as exc:
 
 try:
     from obs.controller import start_recording, stop_recording
+    import obs.controller as obs_controller
 except Exception as exc:
     RECORDING_IMPORT_ERROR = str(exc)
+    obs_controller = None
 
-    def start_recording():
+    def start_recording(devices=None):
         raise RuntimeError(f"Recording backend unavailable: {RECORDING_IMPORT_ERROR}")
 
     def stop_recording():
         raise RuntimeError(f"Recording backend unavailable: {RECORDING_IMPORT_ERROR}")
 
+IS_WINDOWS = sys.platform == "win32"
+DEFAULT_MIC = 'Microphone (Audio Array AM-C1 Device)' if IS_WINDOWS else 'default'
+DEFAULT_STEREO = 'Stereo Mix (Realtek(R) Audio)' if IS_WINDOWS else 'default.monitor'
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--ffmpeg', default='ffmpeg', help='Path to ffmpeg executable')
-parser.add_argument('--mic', default='Microphone (Audio Array AM-C1 Device)')
-parser.add_argument('--stereo', default='Stereo Mix (Realtek(R) Audio)')
+parser.add_argument('--mic', default=DEFAULT_MIC)
+parser.add_argument('--stereo', default=DEFAULT_STEREO)
 args = parser.parse_args()
+
+# Sync ffmpeg path to obs.controller if available
+if obs_controller is not None:
+    try:
+        obs_controller.FFMPEG_PATH = args.ffmpeg
+    except Exception:
+        pass
 
 state_lock = threading.Lock()
 state = {
@@ -46,9 +59,33 @@ state = {
     'call': False,
 }
 
+# Keep selected devices for auto-record
+selected_devices = {
+    'mic': args.mic,
+    'stereo': args.stereo,
+}
+
+# On Linux, resolve default.monitor to a real .monitor if needed
+if not IS_WINDOWS and obs_controller is not None:
+    try:
+        _devs = obs_controller.get_audio_devices()
+        _real_stereos = [s for s in _devs.get('stereos', []) if '.monitor' in s]
+        if _real_stereos:
+            if selected_devices['stereo'] == DEFAULT_STEREO or selected_devices['stereo'] not in _devs.get('stereos', []):
+                selected_devices['stereo'] = _real_stereos[0]
+            if selected_devices['mic'] not in _devs.get('mics', []):
+                # keep mic as is if default
+                pass
+    except Exception:
+        pass
+    # update env after resolution
+    os.environ['MIC_DEVICE'] = selected_devices['mic']
+    os.environ['STEREO_DEVICE'] = selected_devices['stereo']
+else:
+    os.environ['MIC_DEVICE'] = selected_devices['mic']
+    os.environ['STEREO_DEVICE'] = selected_devices['stereo']
+
 os.environ['FFMPEG_PATH'] = args.ffmpeg
-os.environ['MIC_DEVICE'] = args.mic
-os.environ['STEREO_DEVICE'] = args.stereo
 
 running = True
 
@@ -75,13 +112,31 @@ def update_audio_devices(devices: Dict):
 
     if mic:
         os.environ['MIC_DEVICE'] = mic
+        selected_devices['mic'] = mic
     if stereo:
         os.environ['STEREO_DEVICE'] = stereo
+        selected_devices['stereo'] = stereo
 
 
 def list_audio_devices(ffmpeg_path: str) -> Dict[str, List[str]]:
     default_mic = os.environ.get('MIC_DEVICE', args.mic)
     default_stereo = os.environ.get('STEREO_DEVICE', args.stereo)
+
+    # Prefer obs.controller enumeration (handles Windows + Linux)
+    if obs_controller is not None:
+        try:
+            # sync ffmpeg path
+            obs_controller.FFMPEG_PATH = ffmpeg_path
+            data = obs_controller.get_audio_devices()
+            # Ensure defaults are present (but don't insert invalid default.monitor on Linux)
+            if default_mic not in data.get('mics', []):
+                data.setdefault('mics', []).insert(0, default_mic)
+            if default_stereo not in data.get('stereos', []):
+                if not (not IS_WINDOWS and default_stereo == 'default.monitor' and data.get('stereos')):
+                    data.setdefault('stereos', []).insert(0, default_stereo)
+            return data
+        except Exception:
+            pass
 
     if sys.platform != 'win32':
         return {'mics': [default_mic], 'stereos': [default_stereo]}
@@ -134,7 +189,13 @@ def start_if_needed(trigger: str):
     with state_lock:
         if state['recording']:
             return
-    start_recording()
+        devices = dict(selected_devices)
+    # obs.controller.start_recording now expects dict; support both signatures
+    try:
+        start_recording(devices)
+    except TypeError:
+        # legacy no-arg signature
+        start_recording()
     with state_lock:
         state['recording'] = True
     emit('status', {'message': f'Recording started ({trigger})', 'level': 'info'})
